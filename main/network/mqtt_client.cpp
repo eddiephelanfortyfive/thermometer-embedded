@@ -41,6 +41,8 @@ bool MqttClient::connect() {
     cfg.session.keepalive = Config::Mqtt::keepalive_seconds;
     cfg.session.disable_clean_session = !Config::Mqtt::clean_session;
 
+    LOG_INFO(TAG_MQTT, "Connecting to %s as %s", uri, client_id);
+
     // LWT: retained "offline" on disconnect; publish "online" on connect
     static char lwt_topic[96];
     if (Config::Mqtt::lwt_enable) {
@@ -79,19 +81,46 @@ bool MqttClient::isConnected() const {
 }
 
 int MqttClient::publish(const char* topic, const char* payload, int qos, bool retain) {
-    if (!client) return -1;
+    if (!client || !connected) {
+        LOG_WARN(TAG_MQTT, "Skip publish (not connected) topic=%s", topic);
+        return -1;
+    }
     int length = static_cast<int>(std::strlen(payload));
-    return esp_mqtt_client_publish(client, topic, payload, length, qos, retain ? 1 : 0);
+    int mid = esp_mqtt_client_publish(client, topic, payload, length, qos, retain ? 1 : 0);
+    if (mid >= 0) {
+        LOG_INFO(TAG_MQTT, "Publish topic=%s len=%d qos=%d retain=%d mid=%d", topic, length, qos, retain ? 1 : 0, mid);
+    } else {
+        LOG_ERROR(TAG_MQTT, "Publish failed topic=%s rc=%d", topic, mid);
+    }
+    return mid;
 }
 
 int MqttClient::subscribe(const char* topic, int qos) {
-    if (!client) return -1;
-    return esp_mqtt_client_subscribe(client, topic, qos);
+    if (!client || !connected) {
+        LOG_WARN(TAG_MQTT, "Skip subscribe (not connected) topic=%s", topic);
+        return -1;
+    }
+    int mid = esp_mqtt_client_subscribe(client, topic, qos);
+    if (mid >= 0) {
+        LOG_INFO(TAG_MQTT, "Subscribe topic=%s qos=%d mid=%d", topic, qos, mid);
+    } else {
+        LOG_ERROR(TAG_MQTT, "Subscribe failed topic=%s rc=%d", topic, mid);
+    }
+    return mid;
 }
 
 int MqttClient::unsubscribe(const char* topic) {
-    if (!client) return -1;
-    return esp_mqtt_client_unsubscribe(client, topic);
+    if (!client || !connected) {
+        LOG_WARN(TAG_MQTT, "Skip unsubscribe (not connected) topic=%s", topic);
+        return -1;
+    }
+    int mid = esp_mqtt_client_unsubscribe(client, topic);
+    if (mid >= 0) {
+        LOG_INFO(TAG_MQTT, "Unsubscribe topic=%s mid=%d", topic, mid);
+    } else {
+        LOG_ERROR(TAG_MQTT, "Unsubscribe failed topic=%s rc=%d", topic, mid);
+    }
+    return mid;
 }
 
 void MqttClient::setMessageHandler(MessageHandler handler) {

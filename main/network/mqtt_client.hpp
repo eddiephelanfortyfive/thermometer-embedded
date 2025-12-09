@@ -10,6 +10,8 @@ public:
 
     // Construct using values from Config::Mqtt and Config::Device
     MqttClient();
+    // Optional explicit constructor
+    MqttClient(const char* host, int port, const char* client_id);
 
     bool init();
     bool connect();
