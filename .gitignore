@@ -3,3 +3,4 @@ sdkconfig.old
 build/
 .DS_Store
 .cache/
+main/secrets.hpp

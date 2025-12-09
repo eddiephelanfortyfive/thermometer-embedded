@@ -25,4 +25,6 @@
   - Prefer small, clear, modular functions; avoid deep nesting.
   - Keep payloads and structs fixed-size when possible; validate bounds.
   - Avoid dynamic allocation in constructors/destructors and network callbacks.
+  - Use absolute filesystem paths when referencing files in commands, plans, and citations.
+  - Use angle brackets <> for all includes (system and project). For project headers, use project-root anchored paths, e.g., `<main/utils/logger.hpp>`, `<main/config/config.hpp>`.
 

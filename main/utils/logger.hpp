@@ -2,7 +2,7 @@
 #define LOGGER_HPP
 
 #include <cstdarg>
-#include "esp_log.h"
+#include <esp_log.h>
 
 // Fixed-size formatting buffer to avoid heap usage
 #ifndef LOGGER_MAX_MESSAGE_LEN
