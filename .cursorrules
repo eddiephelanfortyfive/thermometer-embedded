@@ -1,0 +1,28 @@
+# Cursor Rules
+
+- Memory allocation: use static allocation. Avoid heap at runtime.
+  - Do not allocate in task loops/ISRs; no `malloc/free` or `new/delete` in hot paths.
+  - Prefer FreeRTOS static APIs (`xTaskCreateStatic`, `xQueueCreateStatic`, timers/semaphores static).
+  - Use fixed-size, preallocated buffers and arrays; no unbounded container growth.
+  - If STL is used, reserve capacity up front and avoid reallocation.
+
+- Naming conventions:
+  - Variables (locals/params/members/globals): snake_case.
+  - Functions (free/static/member): camelCase.
+  - Constants/macros: UPPER_SNAKE_CASE.
+
+- ESP-IDF/FreeRTOS specifics:
+  - Keep `extern "C" void app_main(void)` as the entry point (in `main.cpp`).
+  - Task functions must be `static` or free functions; follow camelCase for function names.
+  - Use `vTaskDelayUntil` for periodic tasks; avoid busy-waiting.
+  - Use `ESP_LOG*` for logging; avoid `printf` inside tasks.
+
+- Build/CMake guidance:
+  - List all `.cpp` in `main/CMakeLists.txt`; set `REQUIRES` appropriately.
+  - Enable exceptions where required with `-fexceptions`; avoid RTTI unless needed.
+
+- General:
+  - Prefer small, clear, modular functions; avoid deep nesting.
+  - Keep payloads and structs fixed-size when possible; validate bounds.
+  - Avoid dynamic allocation in constructors/destructors and network callbacks.
+

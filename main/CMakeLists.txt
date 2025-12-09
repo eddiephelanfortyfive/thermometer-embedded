@@ -1,2 +1,4 @@
-idf_component_register(SRCS "thermometer-embedded.c"
-                    INCLUDE_DIRS ".")
+idf_component_register(SRCS "main.cpp"
+                               "utils/logger.cpp"
+                    INCLUDE_DIRS "."
+                                  "utils")
