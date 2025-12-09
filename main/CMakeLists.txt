@@ -1,6 +1,7 @@
 idf_component_register(SRCS "main.cpp"
                                "utils/logger.cpp"
                                "network/wifi_manager.cpp"
+                               "network/mqtt_client.cpp"
                     INCLUDE_DIRS "."
                                   ".."
                                   "utils"
