@@ -4,6 +4,7 @@
 #include <main/config/config.hpp>
 #include <main/tasks/cloud_communication_task.hpp>
 #include <freertos/queue.h>
+#include <main/hardware/temperature_sensor.hpp>
 
 // Queue item shapes
 struct SensorDatum { float temp_c; uint32_t ts_ms; };
@@ -36,8 +37,20 @@ extern "C" void app_main(void)
 
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t loop_period = pdMS_TO_TICKS(1000);
+    static TemperatureSensor temp_sensor(GPIO_NUM_25);
+    bool sensor_ok = temp_sensor.init();
+    if (!sensor_ok) {
+        LOG_WARN("MAIN", "%s", "Temperature sensor not detected on GPIO 25");
+    }
     for (;;) {
-        // idle main loop; cloud communication handled by task
+        if (sensor_ok) {
+            float temp_c = 0.0f;
+            if (temp_sensor.readTemperature(temp_c)) {
+                LOG_INFO("MAIN", "Temperature: %.2f C", temp_c);
+            } else {
+                LOG_WARN("MAIN", "%s", "Temperature read failed");
+            }
+        }
 
         vTaskDelayUntil(&last_wake_time, loop_period);
     }

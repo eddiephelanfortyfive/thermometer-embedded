@@ -3,10 +3,12 @@ idf_component_register(SRCS "main.cpp"
                                "network/wifi_manager.cpp"
                                "network/mqtt_client.cpp"
                                "tasks/cloud_communication_task.cpp"
+                               "hardware/temperature_sensor.cpp"
                     INCLUDE_DIRS "."
                                   ".."
                                   "utils"
                                   "network"
+                                  "hardware"
                                   "tasks"
                                   "config"
-                    REQUIRES esp_wifi esp_event nvs_flash esp_netif)
+                    REQUIRES esp_wifi esp_event nvs_flash esp_netif esp_driver_gpio)
