@@ -9,6 +9,7 @@
 #include <main/models/sensor_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
+#include <main/models/moisture_data.hpp>
 #include <inttypes.h>
 #include <cstdio>
 
@@ -31,6 +32,7 @@ namespace {
     static QueueHandle_t s_sensor_queue = nullptr;
     static QueueHandle_t s_alarm_queue = nullptr;
     static QueueHandle_t s_command_queue = nullptr;
+    static QueueHandle_t s_moisture_queue = nullptr;
 
     // MQTT message callback
     static void onMqttMessage(const char* topic, const uint8_t* payload, int length) {
@@ -68,6 +70,7 @@ namespace {
 
         SensorData datum;
         AlarmEvent alarm_event;
+        MoistureData moisture;
 
         for (;;) {
             TickType_t now = xTaskGetTickCount();
@@ -147,6 +150,23 @@ namespace {
                 }
             }
 
+            // Publish queued moisture data
+            if (s_moisture_queue != nullptr) {
+                if (xQueueReceive(s_moisture_queue, &moisture, 0) == pdTRUE) {
+                    if (s_mqtt_client.isConnected()) {
+                        char topic[96];
+                        char payload[160];
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"raw\":%u,\"percent\":%.1f,\"ts_ms\":%" PRIu32 "}",
+                                      static_cast<unsigned>(moisture.moisture_raw),
+                                      static_cast<double>(moisture.moisture_percent),
+                                      moisture.ts_ms);
+                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                    }
+                }
+            }
+
             // Periodic status
             if ((now - last_status_time) > status_period && s_mqtt_client.isConnected()) {
                 char topic[96];
@@ -169,10 +189,12 @@ namespace {
 namespace CloudCommunicationTask {
     void create(QueueHandle_t sensor_queue,
                 QueueHandle_t alarm_queue,
-                QueueHandle_t command_queue) {
+                QueueHandle_t command_queue,
+                QueueHandle_t moisture_queue) {
         s_sensor_queue = sensor_queue;
         s_alarm_queue = alarm_queue;
         s_command_queue = command_queue;
+        s_moisture_queue = moisture_queue;
         xTaskCreateStatic(taskFunction,
                           "cloud_comm",
                           sizeof(s_task_stack) / sizeof(StackType_t),

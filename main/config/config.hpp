@@ -51,8 +51,8 @@ namespace Moisture {
     static constexpr adc_atten_t attenuation = ADC_ATTEN_DB_12; // up to ~3.3V (IDF v6)
     static constexpr uint8_t sample_count = 8;
     // Calibration endpoints (adjust in field)
-    static constexpr uint16_t raw_dry = 3200;
-    static constexpr uint16_t raw_wet = 1300;
+    static constexpr uint16_t raw_dry = 0;
+    static constexpr uint16_t raw_wet = 2700;
 }
 }
 
@@ -70,6 +70,16 @@ namespace Cloud {
     static constexpr uint32_t status_period_ms = 5000;
     static constexpr uint32_t reconnect_interval_ms = 30000;
 }
+}
+
+// Feature toggles to enable/disable subsystems at build time
+namespace Features {
+    // Toggle tasks/subsystems on or off for focused testing
+    static constexpr bool enable_cloud_comm      = true;
+    static constexpr bool enable_temperature_task = false; // disabled for moisture-only testing
+    static constexpr bool enable_moisture_task    = true;
+    static constexpr bool enable_display_task     = false;
+    static constexpr bool enable_alarm_task       = true;
 }
 
 namespace Mqtt {

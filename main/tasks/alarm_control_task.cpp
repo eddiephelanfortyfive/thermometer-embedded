@@ -9,6 +9,7 @@ namespace {
     static const char* TAG = "ALARM_TASK";
 
     static StaticTask_t s_task_tcb;
+
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
 
     static QueueHandle_t s_alarm_queue = nullptr;

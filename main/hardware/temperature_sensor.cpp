@@ -47,7 +47,7 @@ bool TemperatureSensor::init() {
     // Configure ADC channel
     adc_oneshot_chan_cfg_t config = {};
     config.bitwidth = ADC_BITWIDTH_12;
-    config.atten = ADC_ATTEN_DB_11; // 0-3.3V range
+    config.atten = ADC_ATTEN_DB_12; // ~0-3.3V range on IDF v6
     
     esp_err_t ret = adc_oneshot_config_channel(adc_handle, adc_channel, &config);
     if (ret != ESP_OK) {
