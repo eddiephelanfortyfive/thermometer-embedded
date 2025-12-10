@@ -39,12 +39,20 @@ extern "C" void app_main(void)
     static StaticQueue_t moisture_queue_tcb;
     QueueHandle_t moisture_queue = xQueueCreateStatic(
         16, sizeof(MoistureData), moisture_queue_storage, &moisture_queue_tcb);
-    // Start tasks
-    CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue);
-    TemperatureSensorTask::create(sensor_queue);
-    SoilMoistureTask::create(moisture_queue);
-    // Start Alarm Control Task on buzzer GPIO 26, active high
-    AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::buzzer_gpio, true);
+    // Start tasks (honor feature toggles)
+    if (Config::Features::enable_cloud_comm) {
+        CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue, moisture_queue);
+    }
+    if (Config::Features::enable_temperature_task) {
+        TemperatureSensorTask::create(sensor_queue);
+    }
+    if (Config::Features::enable_moisture_task) {
+        SoilMoistureTask::create(moisture_queue);
+    }
+    if (Config::Features::enable_alarm_task) {
+        // Start Alarm Control Task on buzzer GPIO 26, active high
+        AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::buzzer_gpio, true);
+    }
 
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t loop_period = pdMS_TO_TICKS(1000);
