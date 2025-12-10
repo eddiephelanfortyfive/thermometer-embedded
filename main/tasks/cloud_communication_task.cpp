@@ -6,41 +6,21 @@
 #include <main/network/mqtt_client.hpp>
 #include <main/utils/circular_buffer.hpp>
 #include <main/config/config.hpp>
+#include <main/models/sensor_data.hpp>
+#include <main/models/alarm_event.hpp>
+#include <main/models/command.hpp>
 #include <inttypes.h>
 #include <cstdio>
 
 static const char* TAG = "CLOUD_TASK";
 
-// Minimal alarm/command placeholders
-enum class AlarmType {
-    HIGH_TEMPERATURE,
-    LOW_TEMPERATURE,
-    CLEARED
-};
-
-struct AlarmEvent {
-    float temperature;
-    uint32_t timestamp_ms;
-    AlarmType type;
-};
-
-struct Command {
-    // Placeholder; future: parse JSON fields
-    uint32_t timestamp_ms;
-    int type;     // user-defined mapping
-    float value;  // e.g., threshold
-};
-
-struct SensorDatum {
-    float temp_c;
-    uint32_t ts_ms;
-};
+// Use shared models: SensorData, AlarmEvent, Command
 
 namespace {
     // Static instances (no heap)
     static WiFiManager s_wifi_manager;
     static MqttClient s_mqtt_client;
-    static CircularBuffer<SensorDatum, 512> s_telemetry_buffer;
+    static CircularBuffer<SensorData, 512> s_telemetry_buffer;
     static bool s_post_connect_pending = false;
 
     // Task static stack and TCB
@@ -82,11 +62,11 @@ namespace {
         s_mqtt_client.setMessageHandler(&onMqttMessage);
 
         TickType_t last_status_time = xTaskGetTickCount();
-        const TickType_t status_period = pdMS_TO_TICKS(5000);
+        const TickType_t status_period = pdMS_TO_TICKS(Config::Tasks::Cloud::status_period_ms);
         TickType_t last_reconnect_attempt = 0;
-        const TickType_t reconnect_interval = pdMS_TO_TICKS(30000);
+        const TickType_t reconnect_interval = pdMS_TO_TICKS(Config::Tasks::Cloud::reconnect_interval_ms);
 
-        SensorDatum datum;
+        SensorData datum;
         AlarmEvent alarm_event;
 
         for (;;) {
@@ -116,7 +96,7 @@ namespace {
                 (void)s_mqtt_client.subscribe(cmd_topic, Config::Mqtt::default_qos);
 
                 // Flush buffered data
-                SensorDatum buffered;
+                SensorData buffered;
                 while (s_telemetry_buffer.pop(buffered)) {
                     char topic[96];
                     char payload[128];
@@ -154,12 +134,12 @@ namespace {
                         char topic[96];
                         char payload[160];
                         const char* type_str = "CLEARED";
-                        if (alarm_event.type == AlarmType::HIGH_TEMPERATURE) type_str = "HIGH_TEMPERATURE";
-                        else if (alarm_event.type == AlarmType::LOW_TEMPERATURE) type_str = "LOW_TEMPERATURE";
+                        if (alarm_event.type == 1) type_str = "HIGH_TEMPERATURE";
+                        else if (alarm_event.type == 2) type_str = "LOW_TEMPERATURE";
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/alarm", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"temperature\":%.2f,\"timestamp\":%" PRIu32 ",\"type\":\"%s\"}",
-                                      alarm_event.temperature, alarm_event.timestamp_ms, type_str);
+                                      alarm_event.temperature_c, alarm_event.timestamp_ms, type_str);
                         (void)s_mqtt_client.publish(topic, payload, 1, false);
                     } else {
                         // TODO: optionally buffer alarms

@@ -3,10 +3,11 @@
 
 #include <cstdint>
 #include <driver/gpio.h>
+#include <main/config/config.hpp>
 
 class TemperatureSensor {
 public:
-    explicit TemperatureSensor(gpio_num_t sensor_pin = GPIO_NUM_25);
+    explicit TemperatureSensor(gpio_num_t sensor_pin = Config::Hardware::Pins::temp_sensor_gpio);
 
     // Initialize GPIO for OneWire and verify presence pulse
     bool init();

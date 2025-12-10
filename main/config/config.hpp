@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <main/secrets.hpp>
+#include <driver/gpio.h>
+#include <hal/adc_types.h>
 
 namespace Config {
 namespace Wifi {
@@ -18,6 +20,55 @@ namespace Wifi {
 
 namespace Device {
     static constexpr const char* id = Secrets::DEVICE_ID;
+}
+
+namespace Hardware {
+namespace Pins {
+    // GPIO assignments
+    static constexpr gpio_num_t temp_sensor_gpio = GPIO_NUM_25;
+    static constexpr gpio_num_t buzzer_gpio = GPIO_NUM_26;
+
+    // 7-segment LED display (shared segments)
+    static constexpr gpio_num_t led_seg_a = GPIO_NUM_14;
+    static constexpr gpio_num_t led_seg_b = GPIO_NUM_27;
+    static constexpr gpio_num_t led_seg_c = GPIO_NUM_26;
+    static constexpr gpio_num_t led_seg_d = GPIO_NUM_25;
+    static constexpr gpio_num_t led_seg_e = GPIO_NUM_33;
+    static constexpr gpio_num_t led_seg_f = GPIO_NUM_32;
+    static constexpr gpio_num_t led_seg_g = GPIO_NUM_13;
+    static constexpr gpio_num_t led_seg_dp = GPIO_NUM_12;
+    static constexpr gpio_num_t led_digit_left = GPIO_NUM_4;
+    static constexpr gpio_num_t led_digit_right = GPIO_NUM_16;
+    static constexpr bool led_common_anode = true;
+    static constexpr uint8_t led_initial_brightness_percent = 80;
+}
+
+namespace Moisture {
+    // ADC configuration for soil moisture sensor
+    static constexpr adc_unit_t unit = ADC_UNIT_1;
+    static constexpr adc_channel_t channel = ADC_CHANNEL_6;   // GPIO34
+    static constexpr adc_atten_t attenuation = ADC_ATTEN_DB_12; // up to ~3.3V (IDF v6)
+    static constexpr uint8_t sample_count = 8;
+    // Calibration endpoints (adjust in field)
+    static constexpr uint16_t raw_dry = 3200;
+    static constexpr uint16_t raw_wet = 1300;
+}
+}
+
+namespace Tasks {
+namespace Temperature {
+    static constexpr uint32_t period_ms = 1000;
+}
+namespace Moisture {
+    static constexpr uint32_t period_ms = 1000;
+}
+namespace Display {
+    static constexpr uint32_t refresh_slice_ms = 1; // multiplex update cadence
+}
+namespace Cloud {
+    static constexpr uint32_t status_period_ms = 5000;
+    static constexpr uint32_t reconnect_interval_ms = 30000;
+}
 }
 
 namespace Mqtt {
