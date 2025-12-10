@@ -62,11 +62,20 @@ bool TemperatureSensor::reset() {
     esp_rom_delay_us(500);
     // Release and wait 70us
     releaseLine();
-    esp_rom_delay_us(70);
-    // Presence pulse: sensor pulls low for 60-240us
-    bool presence = (readLine() == 0);
-    // Wait remainder of timeslot
-    esp_rom_delay_us(410);
+    // Presence pulse window: low begins 15-60us after release, lasts 60-240us
+    bool presence = false;
+    // Initial guard delay
+    esp_rom_delay_us(15);
+    // Scan up to 240us for low level
+    for (int i = 0; i < 240; ++i) {
+        if (readLine() == 0) {
+            presence = true;
+            break;
+        }
+        esp_rom_delay_us(1);
+    }
+    // Finish the reset timeslot
+    esp_rom_delay_us(250);
     return presence;
 }
 
@@ -91,8 +100,8 @@ uint8_t TemperatureSensor::readBit() {
     driveLow();
     esp_rom_delay_us(6);
     releaseLine();
-    // Sample after ~9us
-    esp_rom_delay_us(9);
+    // Sample near middle of read window (~15us from start)
+    esp_rom_delay_us(15);
     int level = readLine();
     // Wait rest of slot
     esp_rom_delay_us(55);
