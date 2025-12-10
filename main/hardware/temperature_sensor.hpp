@@ -6,7 +6,7 @@
 
 class TemperatureSensor {
 public:
-    explicit TemperatureSensor(gpio_num_t sensor_pin = GPIO_NUM_27);
+    explicit TemperatureSensor(gpio_num_t sensor_pin = GPIO_NUM_25);
 
     // Initialize GPIO for OneWire and verify presence pulse
     bool init();
