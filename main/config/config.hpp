@@ -25,7 +25,8 @@ namespace Device {
 namespace Hardware {
 namespace Pins {
     // GPIO assignments
-    static constexpr gpio_num_t temp_sensor_gpio = GPIO_NUM_25;
+    // LM35 uses ADC - GPIO 36 is ADC1_CH0 (input-only, perfect for analog sensor)
+    static constexpr gpio_num_t temp_sensor_gpio = GPIO_NUM_36;
     static constexpr gpio_num_t buzzer_gpio = GPIO_NUM_26;
 
     // 7-segment LED display (shared segments)
