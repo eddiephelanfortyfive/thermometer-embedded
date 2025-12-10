@@ -1,155 +1,111 @@
 #include <main/hardware/temperature_sensor.hpp>
-#include <driver/gpio.h>
-#include <esp_rom_sys.h>
+#include <main/utils/logger.hpp>
+#include <main/hardware/adc_shared.hpp>
+#include <esp_adc/adc_oneshot.h>
 
-// DS18B20 commands
-static constexpr uint8_t CMD_SKIP_ROM = 0xCC;
-static constexpr uint8_t CMD_CONVERT_T = 0x44;
-static constexpr uint8_t CMD_READ_SCRATCHPAD = 0xBE;
+static const char* TAG_SENSOR = "TempSensor";
+
+// LM35 specifications: 10mV per degree Celsius
+static constexpr float LM35_MV_PER_DEGREE = 10.0f;
+// ESP32 ADC reference voltage (typically 3.3V)
+static constexpr float ADC_REF_VOLTAGE = 3.3f;
+// ADC resolution (12-bit = 4095)
+static constexpr int ADC_MAX_VALUE = 4095;
+// Number of samples for averaging (reduces noise)
+static constexpr int ADC_SAMPLES = 16;
 
 TemperatureSensor::TemperatureSensor(gpio_num_t sensor_pin)
-    : pin(sensor_pin) {}
-
-bool TemperatureSensor::init() {
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT_OUTPUT_OD;
-    io_conf.pin_bit_mask = (1ULL << pin);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-    if (gpio_config(&io_conf) != ESP_OK) {
-        return false;
+    : pin(sensor_pin),
+      adc_channel(ADC_CHANNEL_0),
+      adc_handle(nullptr),
+      initialized(false) {
+    // Map GPIO to ADC channel for ADC1
+    // GPIO 32-39 are ADC1 channels on ESP32
+    if (pin == GPIO_NUM_32) adc_channel = ADC_CHANNEL_4;
+    else if (pin == GPIO_NUM_33) adc_channel = ADC_CHANNEL_5;
+    else if (pin == GPIO_NUM_34) adc_channel = ADC_CHANNEL_6;
+    else if (pin == GPIO_NUM_35) adc_channel = ADC_CHANNEL_7;
+    else if (pin == GPIO_NUM_36) adc_channel = ADC_CHANNEL_0;
+    else if (pin == GPIO_NUM_37) adc_channel = ADC_CHANNEL_1;
+    else if (pin == GPIO_NUM_38) adc_channel = ADC_CHANNEL_2;
+    else if (pin == GPIO_NUM_39) adc_channel = ADC_CHANNEL_3;
+    else {
+        // Default to channel 0 if pin not recognized
+        adc_channel = ADC_CHANNEL_0;
+        LOG_WARN(TAG_SENSOR, "GPIO %d not a valid ADC1 pin, defaulting to ADC_CHANNEL_0", pin);
     }
-    releaseLine();
-    esp_rom_delay_us(5);
-    return reset();
 }
 
-bool TemperatureSensor::readTemperature(float& out_celsius) {
-    // Start conversion
-    if (!reset()) {
+bool TemperatureSensor::init() {
+    // Get shared ADC1 handle
+    adc_handle = AdcShared::getAdc1Handle();
+    if (adc_handle == nullptr) {
+        LOG_ERROR(TAG_SENSOR, "Failed to get shared ADC1 handle");
         return false;
     }
-    writeByte(CMD_SKIP_ROM);
-    writeByte(CMD_CONVERT_T);
-    // Max conversion time 12-bit: 750ms
-    // If parasite power were used, a strong pull-up would be required; assume normal power mode
-    esp_rom_delay_us(750000);
 
-    // Read scratchpad
-    if (!reset()) {
+    // Configure ADC channel
+    adc_oneshot_chan_cfg_t config = {};
+    config.bitwidth = ADC_BITWIDTH_12;
+    config.atten = ADC_ATTEN_DB_11; // 0-3.3V range
+    
+    esp_err_t ret = adc_oneshot_config_channel(adc_handle, adc_channel, &config);
+    if (ret != ESP_OK) {
+        LOG_ERROR(TAG_SENSOR, "Failed to configure ADC channel: %d", ret);
         return false;
     }
-    writeByte(CMD_SKIP_ROM);
-    writeByte(CMD_READ_SCRATCHPAD);
 
-    uint8_t data[9];
-    for (int i = 0; i < 9; ++i) {
-        data[i] = readByte();
-    }
-    // Validate CRC
-    if (crc8Dallas(data, 8) != data[8]) {
-        return false;
-    }
-    int16_t raw = static_cast<int16_t>((static_cast<int16_t>(data[1]) << 8) | data[0]);
-    out_celsius = static_cast<float>(raw) / 16.0f;
+    initialized = true;
+    LOG_INFO(TAG_SENSOR, "LM35 initialized on GPIO %d (ADC1_CH%d)", pin, adc_channel);
     return true;
 }
 
-bool TemperatureSensor::reset() {
-    // Drive low for at least 480us
-    driveLow();
-    esp_rom_delay_us(500);
-    // Release and wait 70us
-    releaseLine();
-    // Presence pulse window: low begins 15-60us after release, lasts 60-240us
-    bool presence = false;
-    // Initial guard delay
-    esp_rom_delay_us(15);
-    // Scan up to 240us for low level
-    for (int i = 0; i < 240; ++i) {
-        if (readLine() == 0) {
-            presence = true;
-            break;
-        }
-        esp_rom_delay_us(1);
+bool TemperatureSensor::readTemperature(float& out_celsius) {
+    if (!initialized || adc_handle == nullptr) {
+        return false;
     }
-    // Finish the reset timeslot
-    esp_rom_delay_us(250);
-    return presence;
-}
 
-void TemperatureSensor::writeBit(uint8_t bit) {
-    if (bit) {
-        // Write '1': pull low ~6us then release for rest of slot (~64us)
-        driveLow();
-        esp_rom_delay_us(6);
-        releaseLine();
-        esp_rom_delay_us(64);
-    } else {
-        // Write '0': pull low ~60us then release
-        driveLow();
-        esp_rom_delay_us(60);
-        releaseLine();
-        esp_rom_delay_us(10);
-    }
-}
-
-uint8_t TemperatureSensor::readBit() {
-    // Initiate read slot
-    driveLow();
-    esp_rom_delay_us(6);
-    releaseLine();
-    // Sample near middle of read window (~15us from start)
-    esp_rom_delay_us(15);
-    int level = readLine();
-    // Wait rest of slot
-    esp_rom_delay_us(55);
-    return (level ? 1 : 0);
-}
-
-void TemperatureSensor::writeByte(uint8_t byte) {
-    for (int i = 0; i < 8; ++i) {
-        writeBit(byte & 0x01);
-        byte >>= 1;
-    }
-}
-
-uint8_t TemperatureSensor::readByte() {
-    uint8_t val = 0;
-    for (int i = 0; i < 8; ++i) {
-        uint8_t b = readBit();
-        val |= (b << i);
-    }
-    return val;
-}
-
-uint8_t TemperatureSensor::crc8Dallas(const uint8_t* data, uint8_t len) {
-    uint8_t crc = 0;
-    while (len--) {
-        uint8_t inbyte = *data++;
-        for (uint8_t i = 0; i < 8; i++) {
-            uint8_t mix = (crc ^ inbyte) & 0x01;
-            crc >>= 1;
-            if (mix) {
-                crc ^= 0x8C; // Dallas/Maxim CRC8 polynomial
-            }
-            inbyte >>= 1;
+    // Read multiple samples and average for noise reduction
+    int32_t adc_sum = 0;
+    int valid_samples = 0;
+    
+    for (int i = 0; i < ADC_SAMPLES; ++i) {
+        int adc_raw = 0;
+        esp_err_t ret = adc_oneshot_read(adc_handle, adc_channel, &adc_raw);
+        if (ret == ESP_OK && adc_raw >= 0) {
+            adc_sum += adc_raw;
+            valid_samples++;
         }
     }
-    return crc;
+
+    if (valid_samples == 0) {
+        LOG_ERROR(TAG_SENSOR, "Failed to read ADC");
+        return false;
+    }
+
+    // Calculate average ADC value
+    float adc_avg = static_cast<float>(adc_sum) / static_cast<float>(valid_samples);
+    
+    // Debug: log raw ADC value (first few reads only to avoid spam)
+    static int debug_count = 0;
+    if (debug_count < 3) {
+        LOG_INFO(TAG_SENSOR, "Raw ADC reading: %d (avg of %d samples)", 
+                 static_cast<int>(adc_avg), valid_samples);
+        debug_count++;
+    }
+    
+    // Convert ADC reading to voltage (millivolts)
+    // Voltage = (ADC_value / ADC_max) * Reference_voltage
+    float voltage_mv = (adc_avg / static_cast<float>(ADC_MAX_VALUE)) * ADC_REF_VOLTAGE * 1000.0f;
+    
+    // Convert voltage to temperature
+    // LM35: 10mV per degree Celsius, so Temperature = Voltage_mV / 10
+    out_celsius = voltage_mv / LM35_MV_PER_DEGREE;
+    
+    // Debug: log voltage and temperature (first few reads)
+    if (debug_count <= 3) {
+        LOG_INFO(TAG_SENSOR, "Voltage: %.2f mV, Temperature: %.2f°C", voltage_mv, out_celsius);
+    }
+    
+    return true;
 }
-
-inline void TemperatureSensor::driveLow() {
-    gpio_set_level(pin, 0);
-}
-
-inline void TemperatureSensor::releaseLine() {
-    gpio_set_level(pin, 1);
-}
-
-inline int TemperatureSensor::readLine() const {
-    return gpio_get_level(pin);
-}
-
-

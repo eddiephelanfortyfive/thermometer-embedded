@@ -1,14 +1,25 @@
 #include <main/hardware/soil_moisture_sensor.hpp>
+#include <main/hardware/adc_shared.hpp>
 #include <algorithm>
 
 SoilMoistureSensor::SoilMoistureSensor(const Config& cfg_in)
     : cfg(cfg_in), adc_handle(nullptr) {}
 
 bool SoilMoistureSensor::init() {
-    adc_oneshot_unit_init_cfg_t unit_cfg = {};
-    unit_cfg.unit_id = cfg.unit;
-    if (adc_oneshot_new_unit(&unit_cfg, &adc_handle) != ESP_OK) {
-        return false;
+    // Use shared ADC1 handle if using ADC_UNIT_1, otherwise create new handle
+    if (cfg.unit == ADC_UNIT_1) {
+        adc_handle = AdcShared::getAdc1Handle();
+        if (adc_handle == nullptr) {
+            return false;
+        }
+    } else {
+        // For ADC_UNIT_2, create a new handle (not shared)
+        adc_oneshot_unit_init_cfg_t unit_cfg = {};
+        unit_cfg.unit_id = cfg.unit;
+        unit_cfg.ulp_mode = ADC_ULP_MODE_DISABLE;
+        if (adc_oneshot_new_unit(&unit_cfg, &adc_handle) != ESP_OK) {
+            return false;
+        }
     }
     adc_oneshot_chan_cfg_t chan_cfg = {};
     chan_cfg.bitwidth = ADC_BITWIDTH_DEFAULT;
