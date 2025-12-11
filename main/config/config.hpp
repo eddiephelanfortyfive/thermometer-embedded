@@ -27,7 +27,8 @@ namespace Pins {
     // GPIO assignments
     // LM35 uses ADC - GPIO 36 is ADC1_CH0 (input-only, perfect for analog sensor)
     static constexpr gpio_num_t temp_sensor_gpio = GPIO_NUM_36;
-    static constexpr gpio_num_t buzzer_gpio = GPIO_NUM_26;
+    // DFRobot Vibration Module - GPIO 21 is available on ESP32 Firebeetle
+    static constexpr gpio_num_t vibration_module_gpio = GPIO_NUM_21;
 
     // 7-segment LED display (shared segments)
     static constexpr gpio_num_t led_seg_a = GPIO_NUM_14;

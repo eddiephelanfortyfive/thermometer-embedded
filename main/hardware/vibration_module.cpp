@@ -1,11 +1,11 @@
-#include <main/hardware/buzzer.hpp>
+#include <main/hardware/vibration_module.hpp>
 #include <driver/gpio.h>
 #include <freertos/task.h>
 
-Buzzer::Buzzer(gpio_num_t buzzer_pin, bool active_high_level)
-    : pin(buzzer_pin), active_high(active_high_level), current_on(false) {}
+VibrationModule::VibrationModule(gpio_num_t vibration_pin, bool active_high_level)
+    : pin(vibration_pin), active_high(active_high_level), current_on(false) {}
 
-bool Buzzer::init() {
+bool VibrationModule::init() {
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -19,31 +19,31 @@ bool Buzzer::init() {
     return true;
 }
 
-void Buzzer::drive(bool enable) {
+void VibrationModule::drive(bool enable) {
     int level = (enable == active_high) ? 1 : 0;
     gpio_set_level(pin, level);
     current_on = enable;
 }
 
-void Buzzer::on() {
+void VibrationModule::on() {
     drive(true);
 }
 
-void Buzzer::off() {
+void VibrationModule::off() {
     drive(false);
 }
 
-bool Buzzer::isOn() const {
+bool VibrationModule::isOn() const {
     return current_on;
 }
 
-void Buzzer::buzzMs(uint32_t duration_ms) {
+void VibrationModule::vibrateMs(uint32_t duration_ms) {
     on();
     vTaskDelay(pdMS_TO_TICKS(duration_ms));
     off();
 }
 
-void Buzzer::pulse(uint32_t on_ms, uint32_t off_ms, uint32_t repeat) {
+void VibrationModule::pulse(uint32_t on_ms, uint32_t off_ms, uint32_t repeat) {
     for (uint32_t i = 0; i < repeat; ++i) {
         on();
         vTaskDelay(pdMS_TO_TICKS(on_ms));
@@ -53,5 +53,3 @@ void Buzzer::pulse(uint32_t on_ms, uint32_t off_ms, uint32_t repeat) {
         }
     }
 }
-
-
