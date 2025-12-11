@@ -76,7 +76,7 @@ namespace Cloud {
 namespace Features {
     // Toggle tasks/subsystems on or off for focused testing
     static constexpr bool enable_cloud_comm      = true;
-    static constexpr bool enable_temperature_task = false; // disabled for moisture-only testing
+    static constexpr bool enable_temperature_task = true; // disabled for moisture-only testing
     static constexpr bool enable_moisture_task    = true;
     static constexpr bool enable_display_task     = false;
     static constexpr bool enable_alarm_task       = true;

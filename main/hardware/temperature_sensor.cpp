@@ -6,7 +6,7 @@
 static const char* TAG_SENSOR = "TempSensor";
 
 // LM35 specifications: 10mV per degree Celsius
-static constexpr float LM35_MV_PER_DEGREE = 10.0f;
+static constexpr float LM35_MV_PER_DEGREE = 20.0f;
 // ESP32 ADC reference voltage (typically 3.3V)
 static constexpr float ADC_REF_VOLTAGE = 3.3f;
 // ADC resolution (12-bit = 4095)
