@@ -6,11 +6,13 @@
 #include <main/tasks/temperature_sensor_task.hpp>
 #include <main/tasks/soil_moisture_task.hpp>
 #include <main/tasks/alarm_control_task.hpp>
+#include <main/tasks/lcd_display_task.hpp>
 #include <main/models/sensor_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
 #include <freertos/queue.h>
+#include <cstring>
 
 extern "C" void app_main(void)
 {
@@ -33,11 +35,16 @@ extern "C" void app_main(void)
     QueueHandle_t command_queue = xQueueCreateStatic(
         16, sizeof(Command), command_queue_storage, &command_queue_tcb);
 
-    // Create moisture queue
     static uint8_t moisture_queue_storage[16 * sizeof(MoistureData)];
     static StaticQueue_t moisture_queue_tcb;
     QueueHandle_t moisture_queue = xQueueCreateStatic(
         16, sizeof(MoistureData), moisture_queue_storage, &moisture_queue_tcb);
+        
+    static uint8_t lcd_queue_storage[8 * sizeof(LcdUpdate)];
+    static StaticQueue_t lcd_queue_tcb;
+    QueueHandle_t lcd_queue = xQueueCreateStatic(
+        8, sizeof(LcdUpdate), lcd_queue_storage, &lcd_queue_tcb);
+
     // Start tasks (honor feature toggles)
     if (Config::Features::enable_cloud_comm) {
         CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue, moisture_queue);
@@ -49,9 +56,11 @@ extern "C" void app_main(void)
         SoilMoistureTask::create(moisture_queue);
     }
     if (Config::Features::enable_alarm_task) {
-        // Start Alarm Control Task with DFRobot vibration module on GPIO 21
-        // Try false if vibration doesn't work (module might be active-low)
-        AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, false);
+        AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, true);
+    }
+    if (Config::Features::enable_lcd_task) {
+        LcdDisplayTask::create(lcd_queue);
+       
     }
 
     TickType_t last_wake_time = xTaskGetTickCount();
