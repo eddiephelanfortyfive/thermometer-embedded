@@ -29,20 +29,21 @@ namespace Pins {
     static constexpr gpio_num_t temp_sensor_gpio = GPIO_NUM_36;
     // DFRobot Vibration Module - GPIO 21 is available on ESP32 Firebeetle
     static constexpr gpio_num_t vibration_module_gpio = GPIO_NUM_21;
+} // namespace Pins
 
-    // 7-segment LED display (shared segments)
-    static constexpr gpio_num_t led_seg_a = GPIO_NUM_14;
-    static constexpr gpio_num_t led_seg_b = GPIO_NUM_27;
-    static constexpr gpio_num_t led_seg_c = GPIO_NUM_26;
-    static constexpr gpio_num_t led_seg_d = GPIO_NUM_25;
-    static constexpr gpio_num_t led_seg_e = GPIO_NUM_33;
-    static constexpr gpio_num_t led_seg_f = GPIO_NUM_32;
-    static constexpr gpio_num_t led_seg_g = GPIO_NUM_13;
-    static constexpr gpio_num_t led_seg_dp = GPIO_NUM_12;
-    static constexpr gpio_num_t led_digit_left = GPIO_NUM_4;
-    static constexpr gpio_num_t led_digit_right = GPIO_NUM_16;
-    static constexpr bool led_common_anode = true;
-    static constexpr uint8_t led_initial_brightness_percent = 80;
+// I2C 16x2 RGB LCD defaults (DFRobot Gravity DFR0464 class)
+namespace Lcd {
+    // Store as plain int to avoid pulling I2C headers into all translation units
+    static constexpr int i2c_port = 0; // I2C_NUM_0
+    static constexpr gpio_num_t sda = GPIO_NUM_21;
+    static constexpr gpio_num_t scl = GPIO_NUM_22;
+    static constexpr uint32_t clk_hz = 100000; // 100 kHz
+    // Default I2C 7-bit addresses commonly used by DFRobot RGB LCD
+    static constexpr uint8_t lcd_addr = 0x3E;  // LCD controller
+    static constexpr uint8_t rgb_addr = 0x60;  // RGB backlight (PCA9633)
+    static constexpr uint8_t backlight_r = 128;
+    static constexpr uint8_t backlight_g = 128;
+    static constexpr uint8_t backlight_b = 128;
 }
 
 namespace Moisture {
@@ -64,9 +65,6 @@ namespace Temperature {
 namespace Moisture {
     static constexpr uint32_t period_ms = 1000;
 }
-namespace Display {
-    static constexpr uint32_t refresh_slice_ms = 1; // multiplex update cadence
-}
 namespace Cloud {
     static constexpr uint32_t status_period_ms = 5000;
     static constexpr uint32_t reconnect_interval_ms = 30000;
@@ -79,8 +77,8 @@ namespace Features {
     static constexpr bool enable_cloud_comm      = true;
     static constexpr bool enable_temperature_task = true; // disabled for moisture-only testing
     static constexpr bool enable_moisture_task    = true;
-    static constexpr bool enable_display_task     = false;
     static constexpr bool enable_alarm_task       = true;
+    static constexpr bool enable_lcd_task         = true; // off by default until wired on hardware
 }
 
 namespace Mqtt {
