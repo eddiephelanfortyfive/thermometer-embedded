@@ -11,7 +11,6 @@
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
 #include <freertos/queue.h>
-#include <main/hardware/buzzer.hpp>
 
 extern "C" void app_main(void)
 {
@@ -50,8 +49,9 @@ extern "C" void app_main(void)
         SoilMoistureTask::create(moisture_queue);
     }
     if (Config::Features::enable_alarm_task) {
-        // Start Alarm Control Task on buzzer GPIO 26, active high
-        AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::buzzer_gpio, true);
+        // Start Alarm Control Task with DFRobot vibration module on GPIO 21
+        // Try false if vibration doesn't work (module might be active-low)
+        AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, false);
     }
 
     TickType_t last_wake_time = xTaskGetTickCount();
