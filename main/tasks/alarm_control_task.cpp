@@ -2,7 +2,7 @@
 #include <freertos/task.h>
 #include <freertos/queue.h>
 #include <main/utils/logger.hpp>
-#include <main/hardware/vibration_module.hpp>
+#include <main/hardware/speaker.hpp>
 #include <main/models/alarm_event.hpp>
 
 namespace {
@@ -12,28 +12,28 @@ namespace {
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
 
     static QueueHandle_t s_alarm_queue = nullptr;
-    static VibrationModule* s_vibration = nullptr;
+    static Speaker* s_speaker = nullptr;
 
     static void playPattern(uint8_t type) {
-        if (!s_vibration) {
+        if (!s_speaker) {
             return;
         }
 
         switch (type) {
             case 0: // short single
-                s_vibration->vibrateMs(200);
+                s_speaker->beepMs(2500 ? 200 : 200); // freq already set in driver
                 break;
             case 1: // double short
-                s_vibration->pulse(200, 100, 2);
+                s_speaker->pulse(200, 100, 2);
                 break;
             case 2: // long
-                s_vibration->vibrateMs(1000);
+                s_speaker->beepMs(1000);
                 break;
             case 3: // triple
-                s_vibration->pulse(150, 100, 3);
+                s_speaker->pulse(150, 100, 3);
                 break;
             default: // fallback: two long
-                s_vibration->pulse(400, 150, 2);
+                s_speaker->pulse(400, 150, 2);
                 break;
         }
     }
@@ -42,27 +42,26 @@ namespace {
         (void)arg;
         LOG_INFO(TAG, "%s", "Alarm Control Task started");
 
-        // Test vibration pattern on startup (for hardware verification)
+        // Test speaker pattern on startup (for hardware verification)
         //TODO: remove this after we verify it works
-        if (s_vibration) {
-            LOG_INFO(TAG, "%s", "Testing vibration module...");
-            // Test: Try continuous vibration for 2 seconds to verify hardware
-            LOG_INFO(TAG, "%s", "Continuous vibration test (2 seconds)...");
-            s_vibration->on();
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            s_vibration->off();
-            vTaskDelay(pdMS_TO_TICKS(500));
-            
-            // Then try pulse pattern
-            LOG_INFO(TAG, "%s", "Pulse pattern test...");
-            for (int i = 0; i < 5; ++i) {
-                s_vibration->vibrateMs(500);
-                vTaskDelay(pdMS_TO_TICKS(200));
-                LOG_INFO(TAG, "Vibration pulse %d/5", i + 1);
+        if (s_speaker) {
+            LOG_INFO(TAG, "%s", "Testing speaker...");
+            // Three 1.5s tones with 300ms gaps
+            for (int i = 0; i < 3; ++i) {
+                s_speaker->beepMs(1500);
+                vTaskDelay(pdMS_TO_TICKS(300));
+                LOG_INFO(TAG, "Speaker burst %d/3", i + 1);
             }
-            LOG_INFO(TAG, "%s", "Vibration test complete");
+
+            // Follow with fast beeps to ensure audibility
+            LOG_INFO(TAG, "%s", "Fast beep pattern...");
+            for (int i = 0; i < 8; ++i) {
+                s_speaker->beepMs(200);
+                vTaskDelay(pdMS_TO_TICKS(150));
+            }
+            LOG_INFO(TAG, "%s", "Speaker test complete");
         } else {
-            LOG_WARN(TAG, "%s", "Vibration module not available for testing");
+            LOG_WARN(TAG, "%s", "Speaker not available for testing");
         }
 
         // Wait for alarms and act immediately
@@ -76,17 +75,17 @@ namespace {
 }
 
 namespace AlarmControlTask {
-    void create(QueueHandle_t alarm_queue, gpio_num_t vibration_pin, bool vibration_active_high) {
+    void create(QueueHandle_t alarm_queue, gpio_num_t speaker_pin, bool active_high) {
         s_alarm_queue = alarm_queue;
         
-        // Initialize vibration module
-        static VibrationModule vibration(vibration_pin, vibration_active_high);
-        s_vibration = &vibration;
-        if (!s_vibration->init()) {
-            LOG_WARN("ALARM_TASK", "Vibration module init failed on GPIO %d", static_cast<int>(vibration_pin));
-            s_vibration = nullptr;
+        // Initialize speaker (LEDC PWM)
+        static Speaker speaker(speaker_pin, active_high);
+        s_speaker = &speaker;
+        if (!s_speaker->init()) {
+            LOG_WARN("ALARM_TASK", "Speaker init failed on GPIO %d", static_cast<int>(speaker_pin));
+            s_speaker = nullptr;
         } else {
-            LOG_INFO("ALARM_TASK", "Vibration module ready on GPIO %d", static_cast<int>(vibration_pin));
+            LOG_INFO("ALARM_TASK", "Speaker ready on GPIO %d", static_cast<int>(speaker_pin));
         }
 
         xTaskCreateStatic(taskFunction, "alarm_control",

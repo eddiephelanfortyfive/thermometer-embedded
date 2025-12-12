@@ -7,9 +7,9 @@
 
 namespace AlarmControlTask {
     // Create task that listens for AlarmEvent messages on alarm_queue
-    // and drives a DFRobot vibration module on vibration_pin.
-    // active_high determines vibration module polarity.
-    void create(QueueHandle_t alarm_queue, gpio_num_t vibration_pin, bool vibration_active_high = true);
+    // and drives the speaker on speaker_pin (LEDC PWM).
+    // active_high determines drive polarity.
+    void create(QueueHandle_t alarm_queue, gpio_num_t speaker_pin, bool active_high = true);
 }
 
 #endif // ALARM_CONTROL_TASK_HPP
