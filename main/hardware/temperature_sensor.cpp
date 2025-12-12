@@ -5,10 +5,9 @@
 
 static const char* TAG_SENSOR = "TempSensor";
 
-// LM35 specifications: 10mV per degree Celsius
-static constexpr float LM35_MV_PER_DEGREE = 20.0f;
 // ESP32 ADC reference voltage (typically 3.3V)
-static constexpr float ADC_REF_VOLTAGE = 3.3f;
+// For ADC_ATTEN_DB_0 on ESP32, effective full-scale is ~1.1V
+static constexpr float ADC_REF_VOLTAGE = 1.1f;
 // ADC resolution (12-bit = 4095)
 static constexpr int ADC_MAX_VALUE = 4095;
 // Number of samples for averaging (reduces noise)
@@ -47,7 +46,8 @@ bool TemperatureSensor::init() {
     // Configure ADC channel
     adc_oneshot_chan_cfg_t config = {};
     config.bitwidth = ADC_BITWIDTH_12;
-    config.atten = ADC_ATTEN_DB_12; // ~0-3.3V range on IDF v6
+    // Use 0 dB attenuation for best resolution in the ~0.2–0.4V range typical of room temperatures
+    config.atten = ADC_ATTEN_DB_0;
     
     esp_err_t ret = adc_oneshot_config_channel(adc_handle, adc_channel, &config);
     if (ret != ESP_OK) {
@@ -98,9 +98,8 @@ bool TemperatureSensor::readTemperature(float& out_celsius) {
     // Voltage = (ADC_value / ADC_max) * Reference_voltage
     float voltage_mv = (adc_avg / static_cast<float>(ADC_MAX_VALUE)) * ADC_REF_VOLTAGE * 1000.0f;
     
-    // Convert voltage to temperature
-    // LM35: 10mV per degree Celsius, so Temperature = Voltage_mV / 10
-    out_celsius = voltage_mv / LM35_MV_PER_DEGREE;
+    // Convert voltage to temperature using configurable gain/offset (no mV offset)
+    out_celsius = (Config::Hardware::Temperature::gain_c_per_mv * voltage_mv);
     
     // Debug: log voltage and temperature (first few reads)
     if (debug_count <= 3) {
