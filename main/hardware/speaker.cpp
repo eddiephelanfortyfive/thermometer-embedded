@@ -65,3 +65,9 @@ void Speaker::pulse(uint32_t on_ms, uint32_t off_ms, uint32_t repeat) {
         }
     }
 }
+
+bool Speaker::setFrequency(uint32_t freq_hz) {
+    freq_hz_ = freq_hz;
+    uint32_t set = ledc_set_freq(LEDC_LOW_SPEED_MODE, timer_, freq_hz_);
+    return (set == freq_hz_);
+}

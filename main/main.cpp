@@ -6,6 +6,7 @@
 #include <main/tasks/temperature_sensor_task.hpp>
 #include <main/tasks/soil_moisture_task.hpp>
 #include <main/tasks/alarm_control_task.hpp>
+#include <main/tasks/plant_monitoring_task.hpp>
 #include <main/tasks/lcd_display_task.hpp>
 #include <main/models/sensor_data.hpp>
 #include <main/models/alarm_event.hpp>
@@ -58,6 +59,8 @@ extern "C" void app_main(void)
     if (Config::Features::enable_alarm_task) {
         AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, true);
     }
+    // Start monitoring task after producers/consumers are running
+    PlantMonitoringTask::create(sensor_queue, moisture_queue, alarm_queue, lcd_queue, command_queue);
     if (Config::Features::enable_lcd_task) {
         LcdDisplayTask::create(lcd_queue);
        

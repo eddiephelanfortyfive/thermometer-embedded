@@ -65,6 +65,31 @@ namespace Moisture {
 }
 }
 
+namespace Monitoring {
+    // Temperature thresholds (Celsius)
+    static constexpr float temp_low_warn_c   = 10.0f;
+    static constexpr float temp_low_crit_c   = 5.0f;
+    static constexpr float temp_high_warn_c  = 28.0f;
+    static constexpr float temp_high_crit_c  = 32.0f;
+
+    // Moisture thresholds (percent)
+    static constexpr float moisture_low_warn_pct  = 35.0f;
+    static constexpr float moisture_low_crit_pct  = 20.0f;
+
+    // Debounce and hysteresis
+    static constexpr uint32_t confirm_warn_ms = 5000;
+    static constexpr uint32_t confirm_crit_ms = 3000;
+    static constexpr float    clear_hysteresis_c   = 1.0f;
+    static constexpr float    clear_hysteresis_pct = 2.0f;
+
+    // Buzzer patterns
+    static constexpr uint32_t warn_beep_ms  = 120;
+    static constexpr uint32_t crit_on_ms    = 200;
+    static constexpr uint32_t crit_off_ms   = 150;
+    static constexpr uint32_t crit_repeat   = 3;
+    static constexpr uint32_t crit_cycle_ms = 2000;
+}
+
 namespace Tasks {
 namespace Temperature {
     static constexpr uint32_t period_ms = 1000;
