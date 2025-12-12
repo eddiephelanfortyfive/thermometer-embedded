@@ -12,6 +12,7 @@
 #include <main/models/moisture_data.hpp>
 #include <inttypes.h>
 #include <cstdio>
+#include <main/utils/time_sync.hpp>
 
 static const char* TAG = "CLOUD_TASK";
 
@@ -63,6 +64,10 @@ namespace {
         (void)s_mqtt_client.init();
         s_mqtt_client.setMessageHandler(&onMqttMessage);
 
+        // Time sync flags
+        bool time_inited = false;
+        bool time_synced_once = false;
+
         TickType_t last_status_time = xTaskGetTickCount();
         const TickType_t status_period = pdMS_TO_TICKS(Config::Tasks::Cloud::status_period_ms);
         TickType_t last_reconnect_attempt = 0;
@@ -76,6 +81,17 @@ namespace {
             TickType_t now = xTaskGetTickCount();
             bool has_ip = s_wifi_manager.hasIp();
             bool mqtt_ok = s_mqtt_client.isConnected();
+
+            // Initialize SNTP when we have IP
+            if (has_ip && !time_inited) {
+                TimeSync::init();
+                time_inited = true;
+            }
+            // Before first publishes after IP, wait briefly for time sync
+            if (has_ip && time_inited && !time_synced_once) {
+                (void)TimeSync::waitForSync(10000);
+                time_synced_once = true;
+            }
 
             // WiFi reconnect
             if (!has_ip) {
@@ -102,11 +118,13 @@ namespace {
                 SensorData buffered;
                 while (s_telemetry_buffer.pop(buffered)) {
                     char topic[96];
-                    char payload[128];
-                    std::snprintf(topic, sizeof(topic), "thermometer/%s/data", Config::Device::id);
+                    char payload[160];
+                    char ts[16];
+                    TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                    std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
                     std::snprintf(payload, sizeof(payload),
-                                  "{\"tempC\":%.2f,\"ts_ms\":%" PRIu32 ",\"buffered\":1}",
-                                  buffered.temp_c, buffered.ts_ms);
+                                  "{\"value\":%.2f,\"ts\":\"%s\",\"buffered\":1}",
+                                  buffered.temp_c, ts);
                     (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
                     vTaskDelay(pdMS_TO_TICKS(50));
                 }
@@ -118,11 +136,13 @@ namespace {
                 if (xQueueReceive(s_sensor_queue, &datum, 0) == pdTRUE) {
                     if (s_mqtt_client.isConnected()) {
                         char topic[96];
-                        char payload[128];
-                        std::snprintf(topic, sizeof(topic), "thermometer/%s/data", Config::Device::id);
+                        char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
-                                      "{\"tempC\":%.2f,\"ts_ms\":%" PRIu32 "}",
-                                      datum.temp_c, datum.ts_ms);
+                                      "{\"value\":%.2f,\"ts\":\"%s\"}",
+                                      datum.temp_c, ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
                     } else {
                         (void)s_telemetry_buffer.push(datum);
@@ -135,14 +155,16 @@ namespace {
                 if (xQueueReceive(s_alarm_queue, &alarm_event, 0) == pdTRUE) {
                     if (s_mqtt_client.isConnected()) {
                         char topic[96];
-                        char payload[160];
+                        char payload[192];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
                         const char* type_str = "CLEARED";
                         if (alarm_event.type == 1) type_str = "HIGH_TEMPERATURE";
                         else if (alarm_event.type == 2) type_str = "LOW_TEMPERATURE";
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/alarm", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
-                                      "{\"temperature\":%.2f,\"timestamp\":%" PRIu32 ",\"type\":\"%s\"}",
-                                      alarm_event.temperature_c, alarm_event.timestamp_ms, type_str);
+                                      "{\"temperature\":%.2f,\"timestamp\":\"%s\",\"type\":\"%s\"}",
+                                      alarm_event.temperature_c, ts, type_str);
                         (void)s_mqtt_client.publish(topic, payload, 1, false);
                     } else {
                         // TODO: optionally buffer alarms
@@ -156,12 +178,13 @@ namespace {
                     if (s_mqtt_client.isConnected()) {
                         char topic[96];
                         char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
-                                      "{\"raw\":%u,\"percent\":%.1f,\"ts_ms\":%" PRIu32 "}",
-                                      static_cast<unsigned>(moisture.moisture_raw),
+                                      "{\"percent\":%.1f,\"ts\":\"%s\"}",
                                       static_cast<double>(moisture.moisture_percent),
-                                      moisture.ts_ms);
+                                      ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
                     }
                 }

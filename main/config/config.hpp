@@ -31,6 +31,13 @@ namespace Pins {
     static constexpr gpio_num_t vibration_module_gpio = GPIO_NUM_19;
 } // namespace Pins
 
+// Temperature sensor configuration (LM35/TMP36 compatibility)
+namespace Temperature {
+    // Gain (°C per mV) and additional °C offset after scaling.
+    // Defaults: 0.1 °C/mV (LM35/TMP36), 0.0 °C offset.
+    static constexpr float gain_c_per_mv = 0.1f;
+}
+
 // I2C 16x2 RGB LCD defaults (DFRobot Gravity DFR0464 class)
 namespace Lcd {
     // Store as plain int to avoid pulling I2C headers into all translation units
