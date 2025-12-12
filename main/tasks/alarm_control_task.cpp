@@ -4,6 +4,8 @@
 #include <main/utils/logger.hpp>
 #include <main/hardware/speaker.hpp>
 #include <main/models/alarm_event.hpp>
+#include <main/config/config.hpp>
+#include <main/state/device_state.hpp>
 
 namespace {
     static const char* TAG = "ALARM_TASK";
@@ -13,6 +15,10 @@ namespace {
 
     static QueueHandle_t s_alarm_queue = nullptr;
     static Speaker* s_speaker = nullptr;
+
+    enum class Mode : uint8_t { NONE = 0, WARNING = 1, CRITICAL = 2 };
+    static Mode s_mode = Mode::NONE;
+    static TickType_t s_last_crit_cycle = 0;
 
     static void playPattern(uint8_t type) {
         if (!s_speaker) {
@@ -42,33 +48,63 @@ namespace {
         (void)arg;
         LOG_INFO(TAG, "%s", "Alarm Control Task started");
 
-        // Test speaker pattern on startup (for hardware verification)
-        //TODO: remove this after we verify it works
+        // Boot up chime: low to high "doo-do"
         if (s_speaker) {
-            LOG_INFO(TAG, "%s", "Testing speaker...");
-            // Three 1.5s tones with 300ms gaps
-            for (int i = 0; i < 3; ++i) {
-                s_speaker->beepMs(1500);
-                vTaskDelay(pdMS_TO_TICKS(300));
-                LOG_INFO(TAG, "Speaker burst %d/3", i + 1);
-            }
-
-            // Follow with fast beeps to ensure audibility
-            LOG_INFO(TAG, "%s", "Fast beep pattern...");
-            for (int i = 0; i < 8; ++i) {
-                s_speaker->beepMs(200);
-                vTaskDelay(pdMS_TO_TICKS(150));
-            }
-            LOG_INFO(TAG, "%s", "Speaker test complete");
+            LOG_INFO(TAG, "%s", "Boot chime...");
+            // Low tone
+            (void)s_speaker->setFrequency(600);
+            s_speaker->toneOn();
+            vTaskDelay(pdMS_TO_TICKS(300));
+            s_speaker->toneOff();
+            vTaskDelay(pdMS_TO_TICKS(120));
+            // High tone
+            (void)s_speaker->setFrequency(1200);
+            s_speaker->toneOn();
+            vTaskDelay(pdMS_TO_TICKS(220));
+            s_speaker->toneOff();
         } else {
             LOG_WARN(TAG, "%s", "Speaker not available for testing");
         }
 
-        // Wait for alarms and act immediately
+        // Wait for alarms and act; repeat pattern in CRITICAL mode
         for (;;) {
             AlarmEvent evt{};
-            if (xQueueReceive(s_alarm_queue, &evt, portMAX_DELAY) == pdTRUE) {
-                playPattern(evt.type);
+            // Use a short timeout so we can schedule repeated critical beeps
+            if (xQueueReceive(s_alarm_queue, &evt, pdMS_TO_TICKS(100)) == pdTRUE) {
+                // Map incoming event types to mode
+                if (evt.type == 3) {
+                    s_mode = Mode::CRITICAL;
+                    s_last_crit_cycle = 0; // force immediate cycle
+                } else if (evt.type == 0) {
+                    s_mode = Mode::WARNING;
+                    // Single short beep on warning event
+                    playPattern(0);
+                } else {
+                    // Unknown/clear
+                    s_mode = Mode::NONE;
+                }
+            }
+
+            // Poll shared device state machine to ensure correctness
+            auto ds = DeviceStateMachine::get();
+            if (ds != DeviceStateMachine::DeviceState::CRITICAL) {
+                // Stop repeating loop when not critical
+                s_mode = Mode::NONE;
+            } else {
+                s_mode = Mode::CRITICAL;
+            }
+
+            // Handle continuous beeping in CRITICAL mode
+            if (s_mode == Mode::CRITICAL && s_speaker) {
+                TickType_t now = xTaskGetTickCount();
+                const TickType_t cycle = pdMS_TO_TICKS(Config::Monitoring::crit_cycle_ms);
+                if (s_last_crit_cycle == 0 || (now - s_last_crit_cycle) >= cycle) {
+                    // Play configured critical pattern
+                    s_speaker->pulse(Config::Monitoring::crit_on_ms,
+                                     Config::Monitoring::crit_off_ms,
+                                     Config::Monitoring::crit_repeat);
+                    s_last_crit_cycle = xTaskGetTickCount();
+                }
             }
         }
     }

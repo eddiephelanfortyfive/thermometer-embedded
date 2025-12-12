@@ -20,6 +20,9 @@ public:
     void beepMs(uint32_t duration_ms);
     void pulse(uint32_t on_ms, uint32_t off_ms, uint32_t repeat);
 
+    // Change tone frequency on the fly
+    bool setFrequency(uint32_t freq_hz);
+
 private:
     gpio_num_t pin_;
     bool active_high_;
