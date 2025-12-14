@@ -86,13 +86,7 @@ bool TemperatureSensor::readTemperature(float& out_celsius) {
     // Calculate average ADC value
     float adc_avg = static_cast<float>(adc_sum) / static_cast<float>(valid_samples);
     
-    // Debug: log raw ADC value (first few reads only to avoid spam)
-    static int debug_count = 0;
-    if (debug_count < 3) {
-        LOG_INFO(TAG_SENSOR, "Raw ADC reading: %d (avg of %d samples)", 
-                 static_cast<int>(adc_avg), valid_samples);
-        debug_count++;
-    }
+    // Suppress per-read debug logging to reduce noise
     
     // Convert ADC reading to voltage (millivolts)
     // Voltage = (ADC_value / ADC_max) * Reference_voltage
@@ -101,10 +95,7 @@ bool TemperatureSensor::readTemperature(float& out_celsius) {
     // Convert voltage to temperature using configurable gain/offset (no mV offset)
     out_celsius = (Config::Hardware::Temperature::gain_c_per_mv * voltage_mv);
     
-    // Debug: log voltage and temperature (first few reads)
-    if (debug_count <= 3) {
-        LOG_INFO(TAG_SENSOR, "Voltage: %.2f mV, Temperature: %.2f°C", voltage_mv, out_celsius);
-    }
+    // Suppress per-read debug logging to reduce noise
     
     return true;
 }

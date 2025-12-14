@@ -5,10 +5,10 @@
 #include <freertos/queue.h>
 
 namespace CloudCommunicationTask {
-    void create(QueueHandle_t sensor_queue,
+    void create(QueueHandle_t temperature_mqtt_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t command_queue,
-                QueueHandle_t moisture_queue);
+                QueueHandle_t moisture_mqtt_queue);
 }
 
 #endif // CLOUD_COMMUNICATION_TASK_HPP
