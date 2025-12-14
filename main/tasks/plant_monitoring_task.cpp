@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <main/models/command.hpp>
 #include <main/state/device_state.hpp>
+#include <main/state/runtime_thresholds.hpp>
 
 namespace {
     static const char* TAG = "PLANT_MON";
@@ -92,17 +93,45 @@ namespace {
     }
 
     static State classifyTemp(float t, Reason& r) {
-        using namespace Config::Monitoring;
-        if (t <= temp_low_crit_c)  { r = Reason::TEMP_LOW;  return State::CRITICAL; }
-        if (t >= temp_high_crit_c) { r = Reason::TEMP_HIGH; return State::CRITICAL; }
-        if (t <= temp_low_warn_c)  { r = Reason::TEMP_LOW;  return State::WARNING; }
-        if (t >= temp_high_warn_c) { r = Reason::TEMP_HIGH; return State::WARNING; }
+        // Cache thresholds to avoid repeated function calls
+        static float cached_temp_low_crit = 0.0f;
+        static float cached_temp_high_crit = 0.0f;
+        static float cached_temp_low_warn = 0.0f;
+        static float cached_temp_high_warn = 0.0f;
+        static TickType_t last_cache_update = 0;
+        
+        TickType_t now = xTaskGetTickCount();
+        // Refresh cache every 5 seconds to pick up threshold changes
+        if ((now - last_cache_update) > pdMS_TO_TICKS(5000) || last_cache_update == 0) {
+            cached_temp_low_crit = RuntimeThresholds::getTempLowCrit();
+            cached_temp_high_crit = RuntimeThresholds::getTempHighCrit();
+            cached_temp_low_warn = RuntimeThresholds::getTempLowWarn();
+            cached_temp_high_warn = RuntimeThresholds::getTempHighWarn();
+            last_cache_update = now;
+        }
+
+        if (t <= cached_temp_low_crit)  { r = Reason::TEMP_LOW;  return State::CRITICAL; }
+        if (t >= cached_temp_high_crit) { r = Reason::TEMP_HIGH; return State::CRITICAL; }
+        if (t <= cached_temp_low_warn)  { r = Reason::TEMP_LOW;  return State::WARNING; }
+        if (t >= cached_temp_high_warn) { r = Reason::TEMP_HIGH; return State::WARNING; }
         r = Reason::CLEAR; return State::OK;
     }
     static State classifyMoist(float m, Reason& r) {
-        using namespace Config::Monitoring;
-        if (m <= moisture_low_crit_pct) { r = Reason::MOISTURE_LOW; return State::CRITICAL; }
-        if (m <= moisture_low_warn_pct) { r = Reason::MOISTURE_LOW; return State::WARNING; }
+        // Cache thresholds to avoid repeated function calls
+        static float cached_moisture_low_crit = 0.0f;
+        static float cached_moisture_low_warn = 0.0f;
+        static TickType_t last_cache_update = 0;
+        
+        TickType_t now = xTaskGetTickCount();
+        // Refresh cache every 5 seconds to pick up threshold changes
+        if ((now - last_cache_update) > pdMS_TO_TICKS(5000) || last_cache_update == 0) {
+            cached_moisture_low_crit = RuntimeThresholds::getMoistureLowCrit();
+            cached_moisture_low_warn = RuntimeThresholds::getMoistureLowWarn();
+            last_cache_update = now;
+        }
+
+        if (m <= cached_moisture_low_crit) { r = Reason::MOISTURE_LOW; return State::CRITICAL; }
+        if (m <= cached_moisture_low_warn) { r = Reason::MOISTURE_LOW; return State::WARNING; }
         r = Reason::CLEAR; return State::OK;
     }
 
