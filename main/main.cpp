@@ -8,7 +8,7 @@
 #include <main/tasks/alarm_control_task.hpp>
 #include <main/tasks/plant_monitoring_task.hpp>
 #include <main/tasks/lcd_display_task.hpp>
-#include <main/models/sensor_data.hpp>
+#include <main/models/temperature_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
@@ -21,10 +21,10 @@ extern "C" void app_main(void)
     LOG_INFO("MAIN", "%s", "---Didgital thermometer started---");
 
     // Create static queues
-    static uint8_t sensor_queue_storage[32 * sizeof(SensorData)];
-    static StaticQueue_t sensor_queue_tcb;
-    QueueHandle_t sensor_queue = xQueueCreateStatic(
-        32, sizeof(SensorData), sensor_queue_storage, &sensor_queue_tcb);
+    static uint8_t temperature_data_queue_storage[32 * sizeof(TemperatureData)];
+    static StaticQueue_t temperature_data_queue_tcb;
+    QueueHandle_t temperature_data_queue = xQueueCreateStatic(
+        32, sizeof(TemperatureData), temperature_data_queue_storage, &temperature_data_queue_tcb);
 
     static uint8_t alarm_queue_storage[16 * sizeof(AlarmEvent)];
     static StaticQueue_t alarm_queue_tcb;
@@ -36,31 +36,42 @@ extern "C" void app_main(void)
     QueueHandle_t command_queue = xQueueCreateStatic(
         16, sizeof(Command), command_queue_storage, &command_queue_tcb);
 
-    static uint8_t moisture_queue_storage[16 * sizeof(MoistureData)];
-    static StaticQueue_t moisture_queue_tcb;
-    QueueHandle_t moisture_queue = xQueueCreateStatic(
-        16, sizeof(MoistureData), moisture_queue_storage, &moisture_queue_tcb);
+    static uint8_t moisture_data_queue_storage[16 * sizeof(MoistureData)];
+    static StaticQueue_t moisture_data_queue_tcb;
+    QueueHandle_t moisture_data_queue = xQueueCreateStatic(
+        16, sizeof(MoistureData), moisture_data_queue_storage, &moisture_data_queue_tcb);
         
     static uint8_t lcd_queue_storage[8 * sizeof(LcdUpdate)];
     static StaticQueue_t lcd_queue_tcb;
     QueueHandle_t lcd_queue = xQueueCreateStatic(
         8, sizeof(LcdUpdate), lcd_queue_storage, &lcd_queue_tcb);
 
+    static uint8_t temperature_mqtt_queue_storage[1 * sizeof(TemperatureData)];
+    static StaticQueue_t temperature_mqtt_queue_tcb;
+    QueueHandle_t temperature_mqtt_queue = xQueueCreateStatic(
+        1, sizeof(TemperatureData), temperature_mqtt_queue_storage, &temperature_mqtt_queue_tcb);
+
+    static uint8_t moisture_mqtt_queue_storage[1 * sizeof(MoistureData)];
+    static StaticQueue_t moisture_mqtt_queue_tcb;
+    QueueHandle_t moisture_mqtt_queue = xQueueCreateStatic(
+        1, sizeof(MoistureData), moisture_mqtt_queue_storage, &moisture_mqtt_queue_tcb);
+
     // Start tasks (honor feature toggles)
     if (Config::Features::enable_cloud_comm) {
-        CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue, moisture_queue);
+        CloudCommunicationTask::create(temperature_mqtt_queue, alarm_queue, command_queue, moisture_mqtt_queue);
     }
     if (Config::Features::enable_temperature_task) {
-        TemperatureSensorTask::create(sensor_queue);
+        TemperatureSensorTask::create(temperature_data_queue);
     }
     if (Config::Features::enable_moisture_task) {
-        SoilMoistureTask::create(moisture_queue);
+        SoilMoistureTask::create(moisture_data_queue);
     }
     if (Config::Features::enable_alarm_task) {
         AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, true);
     }
     // Start monitoring task after producers/consumers are running
-    PlantMonitoringTask::create(sensor_queue, moisture_queue, alarm_queue, lcd_queue, command_queue);
+    PlantMonitoringTask::create(temperature_data_queue, moisture_data_queue, alarm_queue, lcd_queue, command_queue,
+                                temperature_mqtt_queue, moisture_mqtt_queue);
     if (Config::Features::enable_lcd_task) {
         LcdDisplayTask::create(lcd_queue);
        

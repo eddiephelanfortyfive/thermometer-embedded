@@ -100,6 +100,8 @@ namespace Moisture {
 namespace Cloud {
     static constexpr uint32_t status_period_ms = 5000;
     static constexpr uint32_t reconnect_interval_ms = 30000;
+    // Telemetry throttling period (publish latest values at most this often)
+    static constexpr uint32_t telemetry_period_ms = 5000;
 }
 }
 

@@ -49,10 +49,6 @@ namespace {
             MoistureData sample{};
             if (s_sensor.read(sample)) {
                 sample.ts_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-                LOG_INFO(TAG, "raw=%u percent=%.1f ts=%" PRIu32,
-                         static_cast<unsigned>(sample.moisture_raw),
-                         static_cast<double>(sample.moisture_percent),
-                         sample.ts_ms);
                 (void)xQueueSend(s_moisture_queue, &sample, 0);
             } else {
                 LOG_WARN(TAG, "%s", "Moisture read failed");

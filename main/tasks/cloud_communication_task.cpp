@@ -6,7 +6,7 @@
 #include <main/network/mqtt_client.hpp>
 #include <main/utils/circular_buffer.hpp>
 #include <main/config/config.hpp>
-#include <main/models/sensor_data.hpp>
+#include <main/models/temperature_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
@@ -24,7 +24,7 @@ namespace {
     // Static instances (no heap)
     static WiFiManager s_wifi_manager;
     static MqttClient s_mqtt_client;
-    static CircularBuffer<SensorData, 512> s_telemetry_buffer;
+    static CircularBuffer<TemperatureData, 512> s_telemetry_buffer;
     static bool s_post_connect_pending = false;
     // Cache latest values for alerts
     static float s_last_temp_c = 0.0f;
@@ -35,12 +35,15 @@ namespace {
     // Task static stack and TCB
     static StaticTask_t s_task_tcb;
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
+    // Telemetry rate-limit
+    static TickType_t s_last_temp_emit = 0;
+    static TickType_t s_last_moist_emit = 0;
 
-    // Queues provided by main
-    static QueueHandle_t s_sensor_queue = nullptr;
+    // Queues provided by main (cloud-forwarded, latest-only)
+    static QueueHandle_t s_temperature_mqtt_queue = nullptr;
     static QueueHandle_t s_alarm_queue = nullptr;
     static QueueHandle_t s_command_queue = nullptr;
-    static QueueHandle_t s_moisture_queue = nullptr;
+    static QueueHandle_t s_moisture_mqtt_queue = nullptr;
 
     // MQTT message callback
     static void onMqttMessage(const char* topic, const uint8_t* payload, int length) {
@@ -80,7 +83,7 @@ namespace {
         TickType_t last_reconnect_attempt = 0;
         const TickType_t reconnect_interval = pdMS_TO_TICKS(Config::Tasks::Cloud::reconnect_interval_ms);
 
-        SensorData datum;
+        TemperatureData datum;
         AlarmEvent alarm_event;
         MoistureData moisture;
 
@@ -122,7 +125,7 @@ namespace {
                 (void)s_mqtt_client.subscribe(cmd_topic, Config::Mqtt::default_qos);
 
                 // Flush buffered data
-                SensorData buffered;
+                TemperatureData buffered;
                 while (s_telemetry_buffer.pop(buffered)) {
                     char topic[96];
                     char payload[160];
@@ -133,14 +136,23 @@ namespace {
                                   "{\"value\":%.2f,\"ts\":\"%s\",\"buffered\":1}",
                                   buffered.temp_c, ts);
                     (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                    LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
                     vTaskDelay(pdMS_TO_TICKS(50));
                 }
                 s_post_connect_pending = false;
             }
 
-            // Publish queued sensor data
-            if (s_sensor_queue != nullptr) {
-                if (xQueueReceive(s_sensor_queue, &datum, 0) == pdTRUE) {
+            // Read latest temperature from forward queue (non-blocking)
+            if (s_temperature_mqtt_queue != nullptr) {
+                if (xQueueReceive(s_temperature_mqtt_queue, &datum, 0) == pdTRUE) {
+                    s_last_temp_c = datum.temp_c;
+                    s_have_temp = true;
+                }
+            }
+            // Emit temperature at most every telemetry_period_ms
+            if (s_have_temp) {
+                const TickType_t telemetry_period = pdMS_TO_TICKS(Config::Tasks::Cloud::telemetry_period_ms);
+                if ((now - s_last_temp_emit) >= telemetry_period) {
                     if (s_mqtt_client.isConnected()) {
                         char topic[96];
                         char payload[160];
@@ -149,13 +161,17 @@ namespace {
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"value\":%.2f,\"ts\":\"%s\"}",
-                                      datum.temp_c, ts);
+                                      s_last_temp_c, ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
-                        s_last_temp_c = datum.temp_c;
-                        s_have_temp = true;
+                        LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
                     } else {
-                        (void)s_telemetry_buffer.push(datum);
+                        // Buffer latest temperature for post-connect flush
+                        TemperatureData buffered{};
+                        buffered.temp_c = s_last_temp_c;
+                        buffered.ts_ms = static_cast<uint32_t>(now * portTICK_PERIOD_MS);
+                        (void)s_telemetry_buffer.push(buffered);
                     }
+                    s_last_temp_emit = now;
                 }
             }
 
@@ -167,10 +183,17 @@ namespace {
                 }
             }
 
-            // Publish queued moisture data
-            if (s_moisture_queue != nullptr) {
-                if (xQueueReceive(s_moisture_queue, &moisture, 0) == pdTRUE) {
-                    if (s_mqtt_client.isConnected()) {
+            // Read latest moisture from forward queue (non-blocking)
+            if (s_moisture_mqtt_queue != nullptr) {
+                if (xQueueReceive(s_moisture_mqtt_queue, &moisture, 0) == pdTRUE) {
+                    s_last_moisture_pct = moisture.moisture_percent;
+                    s_have_moist = true;
+                }
+            }
+            // Emit moisture at most every telemetry_period_ms (no buffering for moisture)
+            if (s_have_moist) {
+                const TickType_t telemetry_period = pdMS_TO_TICKS(Config::Tasks::Cloud::telemetry_period_ms);
+                if ((now - s_last_moist_emit) >= telemetry_period && s_mqtt_client.isConnected()) {
                         char topic[96];
                         char payload[160];
                         char ts[16];
@@ -178,12 +201,11 @@ namespace {
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"percent\":%.1f,\"ts\":\"%s\"}",
-                                      static_cast<double>(moisture.moisture_percent),
+                                      static_cast<double>(s_last_moisture_pct),
                                       ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
-                        s_last_moisture_pct = moisture.moisture_percent;
-                        s_have_moist = true;
-                    }
+                        LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
+                    s_last_moist_emit = now;
                 }
             }
 
@@ -206,6 +228,7 @@ namespace {
                                   "{\"state\":\"%s\",\"reason\":\"%s\",\"temp\":%.2f,\"moisture\":%.1f,\"ts\":\"%s\"}",
                                   s_str, r_str, s_last_temp_c, s_last_moisture_pct, ts);
                     (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, false);
+                    LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
                 }
             }
 
@@ -252,6 +275,7 @@ namespace {
                                   uptime_ms, buffered, st_str, reasons_str);
                 }
                 (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, true);
+                LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
                 last_status_time = now;
             }
 
@@ -261,14 +285,14 @@ namespace {
 } // namespace
 
 namespace CloudCommunicationTask {
-    void create(QueueHandle_t sensor_queue,
+    void create(QueueHandle_t temperature_mqtt_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t command_queue,
-                QueueHandle_t moisture_queue) {
-        s_sensor_queue = sensor_queue;
+                QueueHandle_t moisture_mqtt_queue) {
+        s_temperature_mqtt_queue = temperature_mqtt_queue;
         s_alarm_queue = alarm_queue;
         s_command_queue = command_queue;
-        s_moisture_queue = moisture_queue;
+        s_moisture_mqtt_queue = moisture_mqtt_queue;
         xTaskCreateStatic(taskFunction,
                           "cloud_comm",
                           sizeof(s_task_stack) / sizeof(StackType_t),

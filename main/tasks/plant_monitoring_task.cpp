@@ -1,7 +1,7 @@
 #include <main/tasks/plant_monitoring_task.hpp>
 #include <freertos/task.h>
 #include <freertos/queue.h>
-#include <main/models/sensor_data.hpp>
+#include <main/models/temperature_data.hpp>
 #include <main/models/moisture_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/tasks/lcd_display_task.hpp>
@@ -19,11 +19,14 @@ namespace {
     static StaticTask_t s_task_tcb;
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
 
-    static QueueHandle_t q_sensor = nullptr;
-    static QueueHandle_t q_moist  = nullptr;
+    static QueueHandle_t q_temperature_data = nullptr;
+    static QueueHandle_t q_moisture_data  = nullptr;
     static QueueHandle_t q_alarm  = nullptr;
     static QueueHandle_t q_lcd    = nullptr;
     static QueueHandle_t q_cmd    = nullptr;
+    // Cloud-forward queues (length 1, latest-only)
+    static QueueHandle_t q_temperature_mqtt = nullptr;
+    static QueueHandle_t q_moisture_mqtt  = nullptr;
 
     enum class State : uint8_t { OK = 0, WARNING = 1, CRITICAL = 2 };
     enum class Reason : uint8_t { CLEAR = 0, TEMP_HIGH = 1, TEMP_LOW = 2, MOISTURE_LOW = 3 };
@@ -146,12 +149,12 @@ namespace {
 
         for (;;) {
             // Drain queues (non-blocking)
-            SensorData sd{};
-            while (q_sensor && xQueueReceive(q_sensor, &sd, 0) == pdTRUE) {
+            TemperatureData sd{};
+            while (q_temperature_data && xQueueReceive(q_temperature_data, &sd, 0) == pdTRUE) {
                 last.has_temp = true; last.temp_c = sd.temp_c; last.temp_ts = sd.ts_ms;
             }
             MoistureData md{};
-            while (q_moist && xQueueReceive(q_moist, &md, 0) == pdTRUE) {
+            while (q_moisture_data && xQueueReceive(q_moisture_data, &md, 0) == pdTRUE) {
                 last.has_moist = true; last.moisture_pct = md.moisture_percent; last.moist_ts = md.ts_ms;
             }
 
@@ -235,6 +238,21 @@ namespace {
                 requestAlert(current, cur_reason);
             }
 
+            // Forward latest samples to Cloud (latest-only overwrite)
+            if (q_temperature_mqtt && last.has_temp) {
+                TemperatureData out{};
+                out.temp_c = last.temp_c;
+                out.ts_ms = last.temp_ts;
+                (void)xQueueOverwrite(q_temperature_mqtt, &out);
+            }
+            if (q_moisture_mqtt && last.has_moist) {
+                MoistureData out{};
+                out.moisture_raw = 0;
+                out.moisture_percent = last.moisture_pct;
+                out.ts_ms = last.moist_ts;
+                (void)xQueueOverwrite(q_moisture_mqtt, &out);
+            }
+
             // LCD update (periodic; flash critical ~1Hz)
             if (current == State::CRITICAL) {
                 if ((now - last_lcd_blink) >= pdMS_TO_TICKS(500)) {
@@ -256,16 +274,20 @@ namespace {
 }
 
 namespace PlantMonitoringTask {
-    void create(QueueHandle_t sensor_queue,
-                QueueHandle_t moisture_queue,
+    void create(QueueHandle_t temperature_data_queue,
+                QueueHandle_t moisture_data_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t lcd_queue,
-                QueueHandle_t command_queue) {
-        q_sensor = sensor_queue;
-        q_moist  = moisture_queue;
+                QueueHandle_t command_queue,
+                QueueHandle_t temperature_mqtt_queue,
+                QueueHandle_t moisture_mqtt_queue) {
+        q_temperature_data = temperature_data_queue;
+        q_moisture_data  = moisture_data_queue;
         q_alarm  = alarm_queue;
         q_lcd    = lcd_queue;
         q_cmd    = command_queue;
+        q_temperature_mqtt = temperature_mqtt_queue;
+        q_moisture_mqtt  = moisture_mqtt_queue;
         xTaskCreateStatic(taskFn, "plant_monitor",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
                           tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
