@@ -25,6 +25,7 @@ namespace {
     static WiFiManager s_wifi_manager;
     static MqttClient s_mqtt_client;
     static CircularBuffer<TemperatureData, 512> s_telemetry_buffer;
+    static CircularBuffer<MoistureData, 512> s_moisture_buffer;
     static bool s_post_connect_pending = false;
     // Cache latest values for alerts
     static float s_last_temp_c = 0.0f;
@@ -139,6 +140,60 @@ namespace {
                     LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
                     vTaskDelay(pdMS_TO_TICKS(50));
                 }
+                // Flush buffered moisture data
+                MoistureData mbuf;
+                while (s_moisture_buffer.pop(mbuf)) {
+                    char topic[96];
+                    char payload[192];
+                    char ts[16];
+                    TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                    std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                    std::snprintf(payload, sizeof(payload),
+                                  "{\"percent\":%.1f,\"ts\":\"%s\",\"buffered\":1}",
+                                  static_cast<double>(mbuf.moisture_percent), ts);
+                    (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                    LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                }
+                // Emit current alert snapshot once per reconnect
+                {
+                    auto st = DeviceStateMachine::get();
+                    uint8_t rf = DeviceStateMachine::reasons();
+                    const char* s_str = (st == DeviceStateMachine::DeviceState::CRITICAL) ? "CRITICAL"
+                                       : (st == DeviceStateMachine::DeviceState::WARNING)  ? "WARNING"
+                                                                                           : "OK";
+                    char topic[96];
+                    char payload[224];
+                    char ts[16];
+                    TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                    std::snprintf(topic, sizeof(topic), "thermometer/%s/alert", Config::Device::id);
+                    // Build reasons array string
+                    char reasons_str[64] = {0};
+                    bool first_reason = true;
+                    auto append_reason = [&](const char* name) {
+                        size_t cur = strlen(reasons_str);
+                        if (!first_reason) {
+                            std::snprintf(reasons_str + cur, sizeof(reasons_str) - cur, ",");
+                            cur++;
+                        }
+                        std::snprintf(reasons_str + cur, sizeof(reasons_str) - cur, "\"%s\"", name);
+                        first_reason = false;
+                    };
+                    if (rf & DeviceStateMachine::REASON_TEMP_HIGH) append_reason("temp_high");
+                    if (rf & DeviceStateMachine::REASON_TEMP_LOW)  append_reason("temp_low");
+                    if (rf & DeviceStateMachine::REASON_MOIST_LOW) append_reason("moisture_low");
+                    if (first_reason) {
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"state\":\"%s\",\"temp\":%.2f,\"moisture\":%.1f,\"ts\":\"%s\",\"snapshot\":1}",
+                                      s_str, s_last_temp_c, s_last_moisture_pct, ts);
+                    } else {
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"state\":\"%s\",\"reasons\":[%s],\"temp\":%.2f,\"moisture\":%.1f,\"ts\":\"%s\",\"snapshot\":1}",
+                                      s_str, reasons_str, s_last_temp_c, s_last_moisture_pct, ts);
+                    }
+                    (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, false);
+                    LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
+                }
                 s_post_connect_pending = false;
             }
 
@@ -190,10 +245,11 @@ namespace {
                     s_have_moist = true;
                 }
             }
-            // Emit moisture at most every telemetry_period_ms (no buffering for moisture)
+            // Emit moisture at most every telemetry_period_ms
             if (s_have_moist) {
                 const TickType_t telemetry_period = pdMS_TO_TICKS(Config::Tasks::Cloud::telemetry_period_ms);
-                if ((now - s_last_moist_emit) >= telemetry_period && s_mqtt_client.isConnected()) {
+                if ((now - s_last_moist_emit) >= telemetry_period) {
+                    if (s_mqtt_client.isConnected()) {
                         char topic[96];
                         char payload[160];
                         char ts[16];
@@ -205,6 +261,14 @@ namespace {
                                       ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
                         LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
+                    } else {
+                        // Buffer latest moisture for post-connect flush
+                        MoistureData buffered{};
+                        buffered.moisture_percent = s_last_moisture_pct;
+                        buffered.moisture_raw = 0;
+                        buffered.ts_ms = static_cast<uint32_t>(now * portTICK_PERIOD_MS);
+                        (void)s_moisture_buffer.push(buffered);
+                    }
                     s_last_moist_emit = now;
                 }
             }
@@ -238,7 +302,9 @@ namespace {
                 char payload[256];
                 std::snprintf(topic, sizeof(topic), "thermometer/%s/status", Config::Device::id);
                 uint32_t uptime_ms = static_cast<uint32_t>(now * portTICK_PERIOD_MS);
-                uint32_t buffered = static_cast<uint32_t>(s_telemetry_buffer.getCount());
+                uint32_t buffered_temp = static_cast<uint32_t>(s_telemetry_buffer.getCount());
+                uint32_t buffered_moist = static_cast<uint32_t>(s_moisture_buffer.getCount());
+                uint32_t buffered_total = buffered_temp + buffered_moist;
                 // Read device state
                 auto st = DeviceStateMachine::get();
                 const char* st_str = (st == DeviceStateMachine::DeviceState::CRITICAL) ? "CRITICAL"
@@ -267,12 +333,12 @@ namespace {
                 }
                 if (first) {
                     std::snprintf(payload, sizeof(payload),
-                                  "{\"status\":\"online\",\"uptime_ms\":%" PRIu32 ",\"buffered\":%" PRIu32 ",\"state\":\"%s\"}",
-                                  uptime_ms, buffered, st_str);
+                                  "{\"status\":\"online\",\"uptime_ms\":%" PRIu32 ",\"buffered\":%" PRIu32 ",\"buffered_temp\":%" PRIu32 ",\"buffered_moist\":%" PRIu32 ",\"state\":\"%s\"}",
+                                  uptime_ms, buffered_total, buffered_temp, buffered_moist, st_str);
                 } else {
                     std::snprintf(payload, sizeof(payload),
-                                  "{\"status\":\"online\",\"uptime_ms\":%" PRIu32 ",\"buffered\":%" PRIu32 ",\"state\":\"%s\",\"reasons\":[%s]}",
-                                  uptime_ms, buffered, st_str, reasons_str);
+                                  "{\"status\":\"online\",\"uptime_ms\":%" PRIu32 ",\"buffered\":%" PRIu32 ",\"buffered_temp\":%" PRIu32 ",\"buffered_moist\":%" PRIu32 ",\"state\":\"%s\",\"reasons\":[%s]}",
+                                  uptime_ms, buffered_total, buffered_temp, buffered_moist, st_str, reasons_str);
                 }
                 (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, true);
                 LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
