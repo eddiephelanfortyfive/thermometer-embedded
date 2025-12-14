@@ -12,6 +12,7 @@
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
+#include <main/models/threshold_update.hpp>
 #include <freertos/queue.h>
 #include <cstring>
 
@@ -46,9 +47,14 @@ extern "C" void app_main(void)
     QueueHandle_t lcd_queue = xQueueCreateStatic(
         8, sizeof(LcdUpdate), lcd_queue_storage, &lcd_queue_tcb);
 
+    static uint8_t config_queue_storage[8 * sizeof(ThresholdUpdate)];
+    static StaticQueue_t config_queue_tcb;
+    QueueHandle_t config_queue = xQueueCreateStatic(
+        8, sizeof(ThresholdUpdate), config_queue_storage, &config_queue_tcb);
+
     // Start tasks (honor feature toggles)
     if (Config::Features::enable_cloud_comm) {
-        CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue, moisture_queue);
+        CloudCommunicationTask::create(sensor_queue, alarm_queue, command_queue, moisture_queue, config_queue);
     }
     if (Config::Features::enable_temperature_task) {
         TemperatureSensorTask::create(sensor_queue);
@@ -60,7 +66,7 @@ extern "C" void app_main(void)
         AlarmControlTask::create(alarm_queue, Config::Hardware::Pins::vibration_module_gpio, true);
     }
     // Start monitoring task after producers/consumers are running
-    PlantMonitoringTask::create(sensor_queue, moisture_queue, alarm_queue, lcd_queue, command_queue);
+    PlantMonitoringTask::create(sensor_queue, moisture_queue, alarm_queue, lcd_queue, command_queue, config_queue);
     if (Config::Features::enable_lcd_task) {
         LcdDisplayTask::create(lcd_queue);
        

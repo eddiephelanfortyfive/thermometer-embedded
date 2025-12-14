@@ -46,7 +46,11 @@ namespace {
                 SensorData sample;
                 sample.temp_c = temp_c;
                 sample.ts_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-                (void)xQueueSend(s_sensor_queue, &sample, 0);
+            if (xQueueSend(s_sensor_queue, &sample, 0) == pdTRUE) {
+                    LOG_INFO(TAG, "Sent temp %.2f C to queue", temp_c);
+                } else {
+                    LOG_WARN(TAG, "Failed to send temp to queue (queue full?)");
+                }
             } else {
                 LOG_WARN(TAG, "%s", "Temperature read failed");
             }

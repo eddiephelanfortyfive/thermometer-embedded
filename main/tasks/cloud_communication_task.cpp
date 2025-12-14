@@ -10,6 +10,8 @@
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
+#include <main/models/threshold_update.hpp>
+#include <main/tasks/plant_monitoring_task.hpp>
 #include <inttypes.h>
 #include <cstdio>
 #include <cstring>
@@ -41,17 +43,98 @@ namespace {
     static QueueHandle_t s_alarm_queue = nullptr;
     static QueueHandle_t s_command_queue = nullptr;
     static QueueHandle_t s_moisture_queue = nullptr;
+    static QueueHandle_t s_config_queue = nullptr;
 
     // MQTT message callback
     static void onMqttMessage(const char* topic, const uint8_t* payload, int length) {
         (void)topic;
-        // Minimal forwarding: enqueue a placeholder Command for handler task
-        if (s_command_queue != nullptr) {
-            Command cmd{};
-            cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-            cmd.type = 0;  // TODO: parse from JSON
-            cmd.value = 0; // TODO: parse from JSON
-            (void)xQueueSend(s_command_queue, &cmd, 0);
+        
+        // Parse set_thresholds command (heap-free JSON parsing)
+        static char buf[256];
+        int n = (length < 255) ? length : 255;
+        std::memcpy(buf, payload, n);
+        buf[n] = '\0';
+
+        // Check if this is a set_thresholds command
+        if (std::strstr(buf, "\"cmd\"") != nullptr && std::strstr(buf, "set_thresholds") != nullptr) {
+            ThresholdUpdate upd{};
+            
+            // Helper lambda to find and parse float values (heap-free JSON parsing)
+            auto find_and_parse = [&](const char* key, float& out, uint8_t& flag) {
+                const char* p = std::strstr(buf, key);
+                if (!p) return;
+                // Skip past the key and find the colon
+                p = std::strchr(p, ':');
+                if (!p) return;
+                p++; // Skip colon
+                // Skip whitespace
+                while (*p == ' ' || *p == '\t') p++;
+                // Parse the float value
+                float v;
+                if (std::sscanf(p, "%f", &v) == 1) {
+                    out = v;
+                    flag = 1;
+                }
+            };
+
+            // Parse all threshold keys
+            find_and_parse("temp_low_warn_c", upd.temp_low_warn_c, upd.has_temp_low_warn);
+            find_and_parse("temp_low_crit_c", upd.temp_low_crit_c, upd.has_temp_low_crit);
+            find_and_parse("temp_high_warn_c", upd.temp_high_warn_c, upd.has_temp_high_warn);
+            find_and_parse("temp_high_crit_c", upd.temp_high_crit_c, upd.has_temp_high_crit);
+            find_and_parse("moisture_low_warn_pct", upd.moisture_low_warn_pct, upd.has_moist_low_warn);
+            find_and_parse("moisture_low_crit_pct", upd.moisture_low_crit_pct, upd.has_moist_low_crit);
+
+            // Forward to PlantMonitoring via config_queue
+            if (s_config_queue != nullptr) {
+                (void)xQueueSend(s_config_queue, &upd, 0);
+                LOG_INFO(TAG, "Threshold update enqueued");
+                
+                // Publish ACK with effective thresholds
+                // Get current thresholds and apply updates to show what will be effective
+                // (Note: PlantMonitoringTask will validate/clamp these values)
+                if (s_mqtt_client.isConnected()) {
+                    auto snap = PlantMonitoringTask::getCurrentThresholds();
+                    // Apply updates to snapshot for ACK (showing what we're setting)
+                    if (upd.has_temp_low_warn) snap.temp_low_warn_c = upd.temp_low_warn_c;
+                    if (upd.has_temp_low_crit) snap.temp_low_crit_c = upd.temp_low_crit_c;
+                    if (upd.has_temp_high_warn) snap.temp_high_warn_c = upd.temp_high_warn_c;
+                    if (upd.has_temp_high_crit) snap.temp_high_crit_c = upd.temp_high_crit_c;
+                    if (upd.has_moist_low_warn) snap.moisture_low_warn_pct = upd.moisture_low_warn_pct;
+                    if (upd.has_moist_low_crit) snap.moisture_low_crit_pct = upd.moisture_low_crit_pct;
+                    
+                    auto st = DeviceStateMachine::get();
+                    const char* st_str = (st == DeviceStateMachine::DeviceState::CRITICAL) ? "CRITICAL"
+                                        : (st == DeviceStateMachine::DeviceState::WARNING) ? "WARNING"
+                                        : "OK";
+                    char topic[96];
+                    char payload[320];
+                    char ts[16];
+                    TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                    std::snprintf(topic, sizeof(topic), "thermometer/%s/ack", Config::Device::id);
+                    std::snprintf(payload, sizeof(payload),
+                                  "{\"ack\":\"set_thresholds\",\"state\":\"%s\",\"thresholds\":{"
+                                  "\"temp_low_warn_c\":%.2f,\"temp_low_crit_c\":%.2f,"
+                                  "\"temp_high_warn_c\":%.2f,\"temp_high_crit_c\":%.2f,"
+                                  "\"moisture_low_warn_pct\":%.1f,\"moisture_low_crit_pct\":%.1f"
+                                  "},\"ts\":\"%s\"}",
+                                  st_str,
+                                  snap.temp_low_warn_c, snap.temp_low_crit_c,
+                                  snap.temp_high_warn_c, snap.temp_high_crit_c,
+                                  snap.moisture_low_warn_pct, snap.moisture_low_crit_pct,
+                                  ts);
+                    (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, false);
+                }
+            }
+        } else {
+            // Minimal forwarding: enqueue a placeholder Command for handler task
+            if (s_command_queue != nullptr) {
+                Command cmd{};
+                cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+                cmd.type = 0;  // TODO: parse from JSON
+                cmd.value = 0; // TODO: parse from JSON
+                (void)xQueueSend(s_command_queue, &cmd, 0);
+            }
         }
         LOG_INFO(TAG, "MQTT RX topic=%s len=%d (forwarded)", topic, length);
     }
@@ -88,6 +171,73 @@ namespace {
             TickType_t now = xTaskGetTickCount();
             bool has_ip = s_wifi_manager.hasIp();
             bool mqtt_ok = s_mqtt_client.isConnected();
+
+            // CRITICAL: Read sensor queues FIRST (before PlantMonitoringTask drains them)
+            // Publish queued sensor data (read all, publish, then forward to PlantMonitoringTask)
+            if (s_sensor_queue != nullptr) {
+                SensorData temp_buffer[32];  // Max queue size
+                int count = 0;
+                // Read all messages from queue
+                while (count < 32 && xQueueReceive(s_sensor_queue, &temp_buffer[count], 0) == pdTRUE) {
+                    count++;
+                }
+                if (count > 0) {
+                    LOG_INFO(TAG, "Read %d temperature samples from queue", count);
+                }
+                // Publish each message
+                for (int i = 0; i < count; i++) {
+                    if (s_mqtt_client.isConnected()) {
+                        char topic[96];
+                        char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"value\":%.2f,\"ts\":\"%s\"}",
+                                      temp_buffer[i].temp_c, ts);
+                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                        LOG_INFO(TAG, "Published temperature: %.2f C", temp_buffer[i].temp_c);
+                        s_last_temp_c = temp_buffer[i].temp_c;
+                        s_have_temp = true;
+                    } else {
+                        (void)s_telemetry_buffer.push(temp_buffer[i]);
+                    }
+                    // Forward to PlantMonitoringTask by putting back in queue
+                    // (PlantMonitoringTask will read it)
+                    (void)xQueueSend(s_sensor_queue, &temp_buffer[i], 0);
+                }
+            }
+
+            // Publish queued moisture data (read all, publish, then forward to PlantMonitoringTask)
+            if (s_moisture_queue != nullptr) {
+                MoistureData temp_buffer[16];  // Max queue size
+                int count = 0;
+                // Read all messages from queue
+                while (count < 16 && xQueueReceive(s_moisture_queue, &temp_buffer[count], 0) == pdTRUE) {
+                    count++;
+                }
+                // Publish each message
+                for (int i = 0; i < count; i++) {
+                    if (s_mqtt_client.isConnected()) {
+                        char topic[96];
+                        char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"percent\":%.1f,\"ts\":\"%s\"}",
+                                      static_cast<double>(temp_buffer[i].moisture_percent),
+                                      ts);
+                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                        LOG_INFO(TAG, "Published moisture: %.1f%%", static_cast<double>(temp_buffer[i].moisture_percent));
+                        s_last_moisture_pct = temp_buffer[i].moisture_percent;
+                        s_have_moist = true;
+                    }
+                    // Forward to PlantMonitoringTask by putting back in queue
+                    // (PlantMonitoringTask will read it)
+                    (void)xQueueSend(s_moisture_queue, &temp_buffer[i], 0);
+                }
+            }
 
             // Initialize SNTP when we have IP
             if (has_ip && !time_inited) {
@@ -138,27 +288,6 @@ namespace {
                 s_post_connect_pending = false;
             }
 
-            // Publish queued sensor data
-            if (s_sensor_queue != nullptr) {
-                if (xQueueReceive(s_sensor_queue, &datum, 0) == pdTRUE) {
-                    if (s_mqtt_client.isConnected()) {
-                        char topic[96];
-                        char payload[160];
-                        char ts[16];
-                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                        std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
-                        std::snprintf(payload, sizeof(payload),
-                                      "{\"value\":%.2f,\"ts\":\"%s\"}",
-                                      datum.temp_c, ts);
-                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
-                        s_last_temp_c = datum.temp_c;
-                        s_have_temp = true;
-                    } else {
-                        (void)s_telemetry_buffer.push(datum);
-                    }
-                }
-            }
-
             // Drain alarm queue (no longer publish legacy alarm topic)
             if (s_alarm_queue != nullptr) {
                 while (xQueueReceive(s_alarm_queue, &alarm_event, 0) == pdTRUE) {
@@ -167,9 +296,16 @@ namespace {
                 }
             }
 
-            // Publish queued moisture data
+            // Publish queued moisture data (read all, publish, then forward to PlantMonitoringTask)
             if (s_moisture_queue != nullptr) {
-                if (xQueueReceive(s_moisture_queue, &moisture, 0) == pdTRUE) {
+                MoistureData temp_buffer[16];  // Max queue size
+                int count = 0;
+                // Read all messages from queue
+                while (count < 16 && xQueueReceive(s_moisture_queue, &temp_buffer[count], 0) == pdTRUE) {
+                    count++;
+                }
+                // Publish each message
+                for (int i = 0; i < count; i++) {
                     if (s_mqtt_client.isConnected()) {
                         char topic[96];
                         char payload[160];
@@ -178,12 +314,16 @@ namespace {
                         std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"percent\":%.1f,\"ts\":\"%s\"}",
-                                      static_cast<double>(moisture.moisture_percent),
+                                      static_cast<double>(temp_buffer[i].moisture_percent),
                                       ts);
                         (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
-                        s_last_moisture_pct = moisture.moisture_percent;
+                        LOG_INFO(TAG, "Published moisture: %.1f%%", static_cast<double>(temp_buffer[i].moisture_percent));
+                        s_last_moisture_pct = temp_buffer[i].moisture_percent;
                         s_have_moist = true;
                     }
+                    // Forward to PlantMonitoringTask by putting back in queue
+                    // (PlantMonitoringTask will read it)
+                    (void)xQueueSend(s_moisture_queue, &temp_buffer[i], 0);
                 }
             }
 
@@ -255,7 +395,64 @@ namespace {
                 last_status_time = now;
             }
 
-            vTaskDelay(pdMS_TO_TICKS(100));
+            // Check queues again before delay (catch any messages that arrived during loop processing)
+            if (s_sensor_queue != nullptr) {
+                SensorData temp_buffer[32];
+                int count = 0;
+                while (count < 32 && xQueueReceive(s_sensor_queue, &temp_buffer[count], 0) == pdTRUE) {
+                    count++;
+                }
+                if (count > 0) {
+                    LOG_INFO(TAG, "Read %d temperature samples from queue (2nd check)", count);
+                }
+                for (int i = 0; i < count; i++) {
+                    if (s_mqtt_client.isConnected()) {
+                        char topic[96];
+                        char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"value\":%.2f,\"ts\":\"%s\"}",
+                                      temp_buffer[i].temp_c, ts);
+                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                        LOG_INFO(TAG, "Published temperature: %.2f C", temp_buffer[i].temp_c);
+                        s_last_temp_c = temp_buffer[i].temp_c;
+                        s_have_temp = true;
+                    } else {
+                        (void)s_telemetry_buffer.push(temp_buffer[i]);
+                    }
+                    (void)xQueueSend(s_sensor_queue, &temp_buffer[i], 0);
+                }
+            }
+
+            if (s_moisture_queue != nullptr) {
+                MoistureData temp_buffer[16];
+                int count = 0;
+                while (count < 16 && xQueueReceive(s_moisture_queue, &temp_buffer[count], 0) == pdTRUE) {
+                    count++;
+                }
+                for (int i = 0; i < count; i++) {
+                    if (s_mqtt_client.isConnected()) {
+                        char topic[96];
+                        char payload[160];
+                        char ts[16];
+                        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+                        std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                        std::snprintf(payload, sizeof(payload),
+                                      "{\"percent\":%.1f,\"ts\":\"%s\"}",
+                                      static_cast<double>(temp_buffer[i].moisture_percent),
+                                      ts);
+                        (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, Config::Mqtt::telemetry_retain);
+                        LOG_INFO(TAG, "Published moisture: %.1f%%", static_cast<double>(temp_buffer[i].moisture_percent));
+                        s_last_moisture_pct = temp_buffer[i].moisture_percent;
+                        s_have_moist = true;
+                    }
+                    (void)xQueueSend(s_moisture_queue, &temp_buffer[i], 0);
+                }
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(50));  // Run more frequently to catch queue messages before PlantMonitoringTask
         }
     }
 } // namespace
@@ -264,16 +461,18 @@ namespace CloudCommunicationTask {
     void create(QueueHandle_t sensor_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t command_queue,
-                QueueHandle_t moisture_queue) {
+                QueueHandle_t moisture_queue,
+                QueueHandle_t config_queue) {
         s_sensor_queue = sensor_queue;
         s_alarm_queue = alarm_queue;
         s_command_queue = command_queue;
         s_moisture_queue = moisture_queue;
+        s_config_queue = config_queue;
         xTaskCreateStatic(taskFunction,
                           "cloud_comm",
                           sizeof(s_task_stack) / sizeof(StackType_t),
                           nullptr,
-                          1, // Low priority
+                          3, // Higher priority than PlantMonitoringTask (which is 2)
                           s_task_stack,
                           &s_task_tcb);
     }

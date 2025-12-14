@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdio>
 #include <main/models/command.hpp>
+#include <main/models/threshold_update.hpp>
 #include <main/state/device_state.hpp>
 
 namespace {
@@ -24,6 +25,25 @@ namespace {
     static QueueHandle_t q_alarm  = nullptr;
     static QueueHandle_t q_lcd    = nullptr;
     static QueueHandle_t q_cmd    = nullptr;
+    static QueueHandle_t q_config = nullptr;
+
+    struct RuntimeThresholds {
+        float temp_low_warn_c;
+        float temp_low_crit_c;
+        float temp_high_warn_c;
+        float temp_high_crit_c;
+        float moisture_low_warn_pct;
+        float moisture_low_crit_pct;
+    };
+
+    static RuntimeThresholds rt = {
+        Config::Monitoring::temp_low_warn_c,
+        Config::Monitoring::temp_low_crit_c,
+        Config::Monitoring::temp_high_warn_c,
+        Config::Monitoring::temp_high_crit_c,
+        Config::Monitoring::moisture_low_warn_pct,
+        Config::Monitoring::moisture_low_crit_pct
+    };
 
     enum class State : uint8_t { OK = 0, WARNING = 1, CRITICAL = 2 };
     enum class Reason : uint8_t { CLEAR = 0, TEMP_HIGH = 1, TEMP_LOW = 2, MOISTURE_LOW = 3 };
@@ -89,17 +109,15 @@ namespace {
     }
 
     static State classifyTemp(float t, Reason& r) {
-        using namespace Config::Monitoring;
-        if (t <= temp_low_crit_c)  { r = Reason::TEMP_LOW;  return State::CRITICAL; }
-        if (t >= temp_high_crit_c) { r = Reason::TEMP_HIGH; return State::CRITICAL; }
-        if (t <= temp_low_warn_c)  { r = Reason::TEMP_LOW;  return State::WARNING; }
-        if (t >= temp_high_warn_c) { r = Reason::TEMP_HIGH; return State::WARNING; }
+        if (t <= rt.temp_low_crit_c)  { r = Reason::TEMP_LOW;  return State::CRITICAL; }
+        if (t >= rt.temp_high_crit_c) { r = Reason::TEMP_HIGH; return State::CRITICAL; }
+        if (t <= rt.temp_low_warn_c)  { r = Reason::TEMP_LOW;  return State::WARNING; }
+        if (t >= rt.temp_high_warn_c) { r = Reason::TEMP_HIGH; return State::WARNING; }
         r = Reason::CLEAR; return State::OK;
     }
     static State classifyMoist(float m, Reason& r) {
-        using namespace Config::Monitoring;
-        if (m <= moisture_low_crit_pct) { r = Reason::MOISTURE_LOW; return State::CRITICAL; }
-        if (m <= moisture_low_warn_pct) { r = Reason::MOISTURE_LOW; return State::WARNING; }
+        if (m <= rt.moisture_low_crit_pct) { r = Reason::MOISTURE_LOW; return State::CRITICAL; }
+        if (m <= rt.moisture_low_warn_pct) { r = Reason::MOISTURE_LOW; return State::WARNING; }
         r = Reason::CLEAR; return State::OK;
     }
 
@@ -153,6 +171,50 @@ namespace {
             MoistureData md{};
             while (q_moist && xQueueReceive(q_moist, &md, 0) == pdTRUE) {
                 last.has_moist = true; last.moisture_pct = md.moisture_percent; last.moist_ts = md.ts_ms;
+            }
+
+            // Handle threshold updates from config_queue
+            ThresholdUpdate upd{};
+            while (q_config && xQueueReceive(q_config, &upd, 0) == pdTRUE) {
+                // Apply present fields with validation
+                if (upd.has_temp_low_warn) {
+                    rt.temp_low_warn_c = upd.temp_low_warn_c;
+                }
+                if (upd.has_temp_low_crit) {
+                    rt.temp_low_crit_c = upd.temp_low_crit_c;
+                }
+                if (upd.has_temp_high_warn) {
+                    rt.temp_high_warn_c = upd.temp_high_warn_c;
+                }
+                if (upd.has_temp_high_crit) {
+                    rt.temp_high_crit_c = upd.temp_high_crit_c;
+                }
+                if (upd.has_moist_low_warn) {
+                    rt.moisture_low_warn_pct = upd.moisture_low_warn_pct;
+                }
+                if (upd.has_moist_low_crit) {
+                    rt.moisture_low_crit_pct = upd.moisture_low_crit_pct;
+                }
+
+                // Enforce invariants: temp_low_crit_c <= temp_low_warn_c < temp_high_warn_c <= temp_high_crit_c
+                if (rt.temp_low_crit_c > rt.temp_low_warn_c) {
+                    rt.temp_low_crit_c = rt.temp_low_warn_c;
+                }
+                if (rt.temp_low_warn_c >= rt.temp_high_warn_c) {
+                    rt.temp_low_warn_c = rt.temp_high_warn_c - 1.0f;
+                }
+                if (rt.temp_high_warn_c > rt.temp_high_crit_c) {
+                    rt.temp_high_crit_c = rt.temp_high_warn_c;
+                }
+
+                // Enforce moisture: 0.0 <= moisture_*_pct <= 100.0
+                if (rt.moisture_low_crit_pct < 0.0f) rt.moisture_low_crit_pct = 0.0f;
+                if (rt.moisture_low_crit_pct > 100.0f) rt.moisture_low_crit_pct = 100.0f;
+                if (rt.moisture_low_warn_pct < 0.0f) rt.moisture_low_warn_pct = 0.0f;
+                if (rt.moisture_low_warn_pct > 100.0f) rt.moisture_low_warn_pct = 100.0f;
+                if (rt.moisture_low_crit_pct > rt.moisture_low_warn_pct) {
+                    rt.moisture_low_crit_pct = rt.moisture_low_warn_pct;
+                }
             }
 
             // Classify each metric
@@ -260,15 +322,28 @@ namespace PlantMonitoringTask {
                 QueueHandle_t moisture_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t lcd_queue,
-                QueueHandle_t command_queue) {
+                QueueHandle_t command_queue,
+                QueueHandle_t config_queue) {
         q_sensor = sensor_queue;
         q_moist  = moisture_queue;
         q_alarm  = alarm_queue;
         q_lcd    = lcd_queue;
         q_cmd    = command_queue;
+        q_config = config_queue;
         xTaskCreateStatic(taskFn, "plant_monitor",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
                           tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+    }
+
+    ThresholdSnapshot getCurrentThresholds() {
+        ThresholdSnapshot snap{};
+        snap.temp_low_warn_c = rt.temp_low_warn_c;
+        snap.temp_low_crit_c = rt.temp_low_crit_c;
+        snap.temp_high_warn_c = rt.temp_high_warn_c;
+        snap.temp_high_crit_c = rt.temp_high_crit_c;
+        snap.moisture_low_warn_pct = rt.moisture_low_warn_pct;
+        snap.moisture_low_crit_pct = rt.moisture_low_crit_pct;
+        return snap;
     }
 }
 
