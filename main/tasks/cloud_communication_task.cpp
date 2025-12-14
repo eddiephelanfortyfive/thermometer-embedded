@@ -97,41 +97,90 @@ namespace {
         }
 
         const char* cmd_str = cJSON_GetStringValue(cmd_item);
-        if (std::strcmp(cmd_str, "update_threshold") != 0) {
+        
+        // Handle single threshold update: {"command": "update_threshold", "threshold": "...", "value": ...}
+        if (std::strcmp(cmd_str, "update_threshold") == 0) {
+            cJSON* threshold_item = cJSON_GetObjectItem(json, "threshold");
+            cJSON* value_item = cJSON_GetObjectItem(json, "value");
+            if (threshold_item == nullptr || !cJSON_IsString(threshold_item) ||
+                value_item == nullptr || !cJSON_IsNumber(value_item)) {
+                cJSON_Delete(json);
+                LOG_WARN(TAG, "MQTT RX missing/invalid 'threshold' or 'value' field");
+                return;
+            }
+
+            const char* threshold_name = cJSON_GetStringValue(threshold_item);
+            float threshold_value = static_cast<float>(cJSON_GetNumberValue(value_item));
+
+            CommandType cmd_type = parseThresholdName(threshold_name);
+            if (cmd_type == static_cast<CommandType>(0)) {
+                cJSON_Delete(json);
+                LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
+                return;
+            }
+
+            // Enqueue command for command task
+            Command cmd{};
+            cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+            cmd.type = static_cast<int32_t>(cmd_type);
+            cmd.value = threshold_value;
+
+            if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
+                LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+            } else {
+                LOG_WARN(TAG, "MQTT RX queue full, dropped command");
+            }
+        }
+        // Handle multiple threshold updates: {"command": "update_thresholds", "temp_high_crit": 30.0, "temp_high_warn": 25.0, ...}
+        else if (std::strcmp(cmd_str, "update_thresholds") == 0) {
+            int updated_count = 0;
+            int failed_count = 0;
+            
+            // Iterate through all JSON items (skip "command" field)
+            cJSON* item = json->child;
+            while (item != nullptr) {
+                // Skip the "command" field itself
+                if (item->string != nullptr && std::strcmp(item->string, "command") == 0) {
+                    item = item->next;
+                    continue;
+                }
+                
+                // Each other field should be a threshold name with a numeric value
+                if (item->string != nullptr && cJSON_IsNumber(item)) {
+                    const char* threshold_name = item->string;
+                    float threshold_value = static_cast<float>(cJSON_GetNumberValue(item));
+                    
+                    CommandType cmd_type = parseThresholdName(threshold_name);
+                    if (cmd_type != static_cast<CommandType>(0)) {
+                        Command cmd{};
+                        cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+                        cmd.type = static_cast<int32_t>(cmd_type);
+                        cmd.value = threshold_value;
+                        
+                        if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
+                            updated_count++;
+                            LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+                        } else {
+                            failed_count++;
+                            LOG_WARN(TAG, "MQTT RX queue full, dropped command: %s", threshold_name);
+                        }
+                    } else {
+                        failed_count++;
+                        LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
+                    }
+                }
+                
+                item = item->next;
+            }
+            
+            if (updated_count > 0) {
+                LOG_INFO(TAG, "MQTT RX batch update: %d succeeded, %d failed", updated_count, failed_count);
+            }
+        }
+        else {
             cJSON_Delete(json);
             LOG_WARN(TAG, "MQTT RX unknown command: %s", cmd_str);
             return;
-        }
-
-        cJSON* threshold_item = cJSON_GetObjectItem(json, "threshold");
-        cJSON* value_item = cJSON_GetObjectItem(json, "value");
-        if (threshold_item == nullptr || !cJSON_IsString(threshold_item) ||
-            value_item == nullptr || !cJSON_IsNumber(value_item)) {
-            cJSON_Delete(json);
-            LOG_WARN(TAG, "MQTT RX missing/invalid 'threshold' or 'value' field");
-            return;
-        }
-
-        const char* threshold_name = cJSON_GetStringValue(threshold_item);
-        float threshold_value = static_cast<float>(cJSON_GetNumberValue(value_item));
-
-        CommandType cmd_type = parseThresholdName(threshold_name);
-        if (cmd_type == static_cast<CommandType>(0)) {
-            cJSON_Delete(json);
-            LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
-            return;
-        }
-
-        // Enqueue command for command task
-        Command cmd{};
-        cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        cmd.type = static_cast<int32_t>(cmd_type);
-        cmd.value = threshold_value;
-
-        if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
-            LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
-        } else {
-            LOG_WARN(TAG, "MQTT RX queue full, dropped command");
         }
 
         cJSON_Delete(json);
