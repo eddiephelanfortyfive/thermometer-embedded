@@ -175,7 +175,7 @@ namespace LcdDisplayTask {
 		                  "lcd_display",
 		                  sizeof(s_task_stack) / sizeof(StackType_t),
 		                  nullptr,
-		                  tskIDLE_PRIORITY + 1,
+		                  Config::TaskPriorities::NORMAL,
 		                  s_task_stack,
 		                  &s_task_tcb);
 		s_task_created = true;

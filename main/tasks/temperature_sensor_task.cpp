@@ -61,7 +61,7 @@ namespace TemperatureSensorTask {
         s_temperature_data_queue = sensor_queue;
         xTaskCreateStatic(taskFunction, "temperature_sensor",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
-                          tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+                          Config::TaskPriorities::HIGH, s_task_stack, &s_task_tcb);
     }
 }
 

@@ -126,7 +126,7 @@ namespace AlarmControlTask {
 
         xTaskCreateStatic(taskFunction, "alarm_control",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
-                          tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+                          Config::TaskPriorities::CRITICAL, s_task_stack, &s_task_tcb);
     }
 }
 
