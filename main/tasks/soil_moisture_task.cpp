@@ -65,14 +65,14 @@ namespace SoilMoistureTask {
         s_sensor = SoilMoistureSensor(config);
         xTaskCreateStatic(taskFunction, "soil_moisture",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
-                          tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+                          Config::TaskPriorities::HIGH, s_task_stack, &s_task_tcb);
     }
 
     void create(QueueHandle_t moisture_queue) {
         s_moisture_queue = moisture_queue;
         xTaskCreateStatic(taskFunction, "soil_moisture",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
-                          tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+                          Config::TaskPriorities::HIGH, s_task_stack, &s_task_tcb);
     }
 }
 
