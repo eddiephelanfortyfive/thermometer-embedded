@@ -5,6 +5,8 @@
 #include <main/secrets.hpp>
 #include <driver/gpio.h>
 #include <hal/adc_types.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace Config {
 namespace Wifi {
@@ -113,6 +115,18 @@ namespace Features {
     static constexpr bool enable_moisture_task    = true;
     static constexpr bool enable_alarm_task       = true;
     static constexpr bool enable_lcd_task         = true; // off by default until wired on hardware
+}
+
+// Task priority levels (higher number = higher priority, can preempt lower)
+namespace TaskPriorities {
+    // Safety-critical: alarm must preempt all other tasks to respond immediately
+    static constexpr UBaseType_t CRITICAL = tskIDLE_PRIORITY + 3;
+
+    // Real-time: sensor sampling and control logic require deterministic timing
+    static constexpr UBaseType_t HIGH     = tskIDLE_PRIORITY + 2;
+
+    // Non-critical: UI feedback and network I/O can tolerate latency
+    static constexpr UBaseType_t NORMAL   = tskIDLE_PRIORITY + 1;
 }
 
 namespace Mqtt {

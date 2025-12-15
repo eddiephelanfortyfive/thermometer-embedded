@@ -319,7 +319,7 @@ namespace PlantMonitoringTask {
         q_moisture_mqtt  = moisture_mqtt_queue;
         xTaskCreateStatic(taskFn, "plant_monitor",
                           sizeof(s_task_stack) / sizeof(StackType_t), nullptr,
-                          tskIDLE_PRIORITY + 2, s_task_stack, &s_task_tcb);
+                          Config::TaskPriorities::HIGH, s_task_stack, &s_task_tcb);
     }
 }
 

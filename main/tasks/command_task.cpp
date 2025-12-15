@@ -4,6 +4,7 @@
 #include <freertos/queue.h>
 #include <main/utils/logger.hpp>
 #include <main/models/command.hpp>
+#include <main/config/config.hpp>
 #include <main/state/runtime_thresholds.hpp>
 #include <inttypes.h>
 #include <cstring>
@@ -137,7 +138,7 @@ namespace CommandTask {
                           "cmd_task",
                           sizeof(s_task_stack) / sizeof(StackType_t),
                           nullptr,
-                          tskIDLE_PRIORITY + 1, // Medium priority
+                          Config::TaskPriorities::NORMAL,
                           s_task_stack,
                           &s_task_tcb);
     }

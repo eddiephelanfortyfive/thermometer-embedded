@@ -502,7 +502,7 @@ namespace CloudCommunicationTask {
                           "cloud_comm",
                           sizeof(s_task_stack) / sizeof(StackType_t),
                           nullptr,
-                          1, // Low priority
+                          Config::TaskPriorities::NORMAL,
                           s_task_stack,
                           &s_task_tcb);
     }
