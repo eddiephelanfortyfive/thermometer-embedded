@@ -69,6 +69,7 @@ bool TemperatureSensor::readTemperature(float& out_celsius) {
     int32_t adc_sum = 0;
     int valid_samples = 0;
     
+    AdcShared::lock();
     for (int i = 0; i < ADC_SAMPLES; ++i) {
         int adc_raw = 0;
         esp_err_t ret = adc_oneshot_read(adc_handle, adc_channel, &adc_raw);
@@ -77,6 +78,7 @@ bool TemperatureSensor::readTemperature(float& out_celsius) {
             valid_samples++;
         }
     }
+    AdcShared::unlock();
 
     if (valid_samples == 0) {
         LOG_ERROR(TAG_SENSOR, "Failed to read ADC");

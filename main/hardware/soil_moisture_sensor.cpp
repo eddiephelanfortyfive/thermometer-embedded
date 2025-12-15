@@ -43,13 +43,16 @@ bool SoilMoistureSensor::read(MoistureData& out_data) {
         return false;
     }
     uint32_t sum = 0;
+    AdcShared::lock();
     for (uint8_t i = 0; i < cfg.sample_count; ++i) {
         int raw = 0;
         if (adc_oneshot_read(adc_handle, cfg.channel, &raw) != ESP_OK) {
+            AdcShared::unlock();
             return false;
         }
         sum += static_cast<uint32_t>(raw);
     }
+    AdcShared::unlock();
     uint16_t avg = static_cast<uint16_t>(sum / cfg.sample_count);
     out_data.moisture_raw = avg;
     out_data.moisture_percent = convertToPercent(avg);

@@ -13,6 +13,12 @@ namespace AdcShared {
     
     // Release the shared ADC1 handle (call when done, though typically never needed)
     void releaseAdc1Handle();
+    
+    // Acquire mutex before ADC operations
+    void lock();
+    
+    // Release mutex after ADC operations
+    void unlock();
 }
 
 #endif // ADC_SHARED_HPP
