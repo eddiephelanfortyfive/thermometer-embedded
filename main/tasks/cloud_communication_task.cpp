@@ -15,6 +15,7 @@
 #include <cstring>
 #include <main/utils/time_sync.hpp>
 #include <main/state/device_state.hpp>
+#include <cJSON.h>
 
 static const char* TAG = "CLOUD_TASK";
 
@@ -46,18 +47,143 @@ namespace {
     static QueueHandle_t s_command_queue = nullptr;
     static QueueHandle_t s_moisture_mqtt_queue = nullptr;
 
+    // Command type encoding: negative values for external MQTT commands
+    enum class CommandType : int32_t {
+        UPDATE_TEMP_LOW_WARN = -1,
+        UPDATE_TEMP_LOW_CRIT = -2,
+        UPDATE_TEMP_HIGH_WARN = -3,
+        UPDATE_TEMP_HIGH_CRIT = -4,
+        UPDATE_MOISTURE_LOW_WARN = -5,
+        UPDATE_MOISTURE_LOW_CRIT = -6,
+    };
+
+    // Map threshold name string to command type
+    static CommandType parseThresholdName(const char* name) {
+        if (std::strcmp(name, "temp_low_warn") == 0) return CommandType::UPDATE_TEMP_LOW_WARN;
+        if (std::strcmp(name, "temp_low_crit") == 0) return CommandType::UPDATE_TEMP_LOW_CRIT;
+        if (std::strcmp(name, "temp_high_warn") == 0) return CommandType::UPDATE_TEMP_HIGH_WARN;
+        if (std::strcmp(name, "temp_high_crit") == 0) return CommandType::UPDATE_TEMP_HIGH_CRIT;
+        if (std::strcmp(name, "moisture_low_warn") == 0) return CommandType::UPDATE_MOISTURE_LOW_WARN;
+        if (std::strcmp(name, "moisture_low_crit") == 0) return CommandType::UPDATE_MOISTURE_LOW_CRIT;
+        return static_cast<CommandType>(0); // Invalid
+    }
+
     // MQTT message callback
     static void onMqttMessage(const char* topic, const uint8_t* payload, int length) {
         (void)topic;
-        // Minimal forwarding: enqueue a placeholder Command for handler task
-        if (s_command_queue != nullptr) {
+        if (s_command_queue == nullptr || length <= 0 || length > 256) {
+            LOG_WARN(TAG, "MQTT RX invalid: topic=%s len=%d", topic, length);
+            return;
+        }
+
+        // Null-terminate payload for JSON parsing
+        char json_buf[257];
+        int copy_len = (length < 256) ? length : 256;
+        std::memcpy(json_buf, payload, copy_len);
+        json_buf[copy_len] = '\0';
+
+        cJSON* json = cJSON_Parse(json_buf);
+        if (json == nullptr) {
+            LOG_WARN(TAG, "MQTT RX JSON parse failed: topic=%s", topic);
+            return;
+        }
+
+        // Parse command structure: {"command": "update_threshold", "threshold": "...", "value": ...}
+        cJSON* cmd_item = cJSON_GetObjectItem(json, "command");
+        if (cmd_item == nullptr || !cJSON_IsString(cmd_item)) {
+            cJSON_Delete(json);
+            LOG_WARN(TAG, "MQTT RX missing/invalid 'command' field");
+            return;
+        }
+
+        const char* cmd_str = cJSON_GetStringValue(cmd_item);
+        
+        // Handle single threshold update: {"command": "update_threshold", "threshold": "...", "value": ...}
+        if (std::strcmp(cmd_str, "update_threshold") == 0) {
+            cJSON* threshold_item = cJSON_GetObjectItem(json, "threshold");
+            cJSON* value_item = cJSON_GetObjectItem(json, "value");
+            if (threshold_item == nullptr || !cJSON_IsString(threshold_item) ||
+                value_item == nullptr || !cJSON_IsNumber(value_item)) {
+                cJSON_Delete(json);
+                LOG_WARN(TAG, "MQTT RX missing/invalid 'threshold' or 'value' field");
+                return;
+            }
+
+            const char* threshold_name = cJSON_GetStringValue(threshold_item);
+            float threshold_value = static_cast<float>(cJSON_GetNumberValue(value_item));
+
+            CommandType cmd_type = parseThresholdName(threshold_name);
+            if (cmd_type == static_cast<CommandType>(0)) {
+                cJSON_Delete(json);
+                LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
+                return;
+            }
+
+            // Enqueue command for command task
             Command cmd{};
             cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-            cmd.type = 0;  // TODO: parse from JSON
-            cmd.value = 0; // TODO: parse from JSON
-            (void)xQueueSend(s_command_queue, &cmd, 0);
+            cmd.type = static_cast<int32_t>(cmd_type);
+            cmd.value = threshold_value;
+
+            if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
+                LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+            } else {
+                LOG_WARN(TAG, "MQTT RX queue full, dropped command");
+            }
         }
-        LOG_INFO(TAG, "MQTT RX topic=%s len=%d (forwarded)", topic, length);
+        // Handle multiple threshold updates: {"command": "update_thresholds", "temp_high_crit": 30.0, "temp_high_warn": 25.0, ...}
+        else if (std::strcmp(cmd_str, "update_thresholds") == 0) {
+            int updated_count = 0;
+            int failed_count = 0;
+            
+            // Iterate through all JSON items (skip "command" field)
+            cJSON* item = json->child;
+            while (item != nullptr) {
+                // Skip the "command" field itself
+                if (item->string != nullptr && std::strcmp(item->string, "command") == 0) {
+                    item = item->next;
+                    continue;
+                }
+                
+                // Each other field should be a threshold name with a numeric value
+                if (item->string != nullptr && cJSON_IsNumber(item)) {
+                    const char* threshold_name = item->string;
+                    float threshold_value = static_cast<float>(cJSON_GetNumberValue(item));
+                    
+                    CommandType cmd_type = parseThresholdName(threshold_name);
+                    if (cmd_type != static_cast<CommandType>(0)) {
+                        Command cmd{};
+                        cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+                        cmd.type = static_cast<int32_t>(cmd_type);
+                        cmd.value = threshold_value;
+                        
+                        if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
+                            updated_count++;
+                            LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+                        } else {
+                            failed_count++;
+                            LOG_WARN(TAG, "MQTT RX queue full, dropped command: %s", threshold_name);
+                        }
+                    } else {
+                        failed_count++;
+                        LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
+                    }
+                }
+                
+                item = item->next;
+            }
+            
+            if (updated_count > 0) {
+                LOG_INFO(TAG, "MQTT RX batch update: %d succeeded, %d failed", updated_count, failed_count);
+            }
+        }
+        else {
+            cJSON_Delete(json);
+            LOG_WARN(TAG, "MQTT RX unknown command: %s", cmd_str);
+            return;
+        }
+
+        cJSON_Delete(json);
     }
 
     static void taskFunction(void* parameters) {
@@ -275,9 +401,21 @@ namespace {
 
             // Handle internal alert publish requests via command queue:
             // Command.type = state (0 OK, 1 WARNING, 2 CRITICAL), Command.value = reason (0 CLEAR,1 TEMP_HIGH,2 TEMP_LOW,3 MOISTURE_LOW)
+            // Only process internal commands (type >= 0); external commands (type < 0) are handled by command task
             if (s_command_queue != nullptr && s_mqtt_client.isConnected()) {
                 Command cmd{};
-                while (xQueueReceive(s_command_queue, &cmd, 0) == pdTRUE) {
+                // Peek at queue without removing items, process only internal commands
+                // Note: FreeRTOS doesn't have peek, so we receive and put back external commands
+                int processed = 0;
+                const int max_iterations = 16; // Limit iterations to avoid infinite loop
+                while (processed < max_iterations && xQueueReceive(s_command_queue, &cmd, 0) == pdTRUE) {
+                    // Skip external commands (negative type values) - put back for command task
+                    if (cmd.type < 0) {
+                        // Put it back at front so command task (blocking) will get it
+                        (void)xQueueSendToFront(s_command_queue, &cmd, 0);
+                        break; // Exit to avoid consuming all external commands
+                    }
+                    // Process internal command
                     int state = cmd.type;
                     int reason = static_cast<int>(cmd.value);
                     const char* s_str = (state == 2) ? "CRITICAL" : (state == 1) ? "WARNING" : "OK";
@@ -293,6 +431,7 @@ namespace {
                                   s_str, r_str, s_last_temp_c, s_last_moisture_pct, ts);
                     (void)s_mqtt_client.publish(topic, payload, Config::Mqtt::default_qos, false);
                     LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", topic, payload);
+                    processed++;
                 }
             }
 

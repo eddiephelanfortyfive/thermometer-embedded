@@ -8,10 +8,13 @@
 #include <main/tasks/alarm_control_task.hpp>
 #include <main/tasks/plant_monitoring_task.hpp>
 #include <main/tasks/lcd_display_task.hpp>
+#include <main/tasks/command_task.hpp>
 #include <main/models/temperature_data.hpp>
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
+#include <main/state/runtime_thresholds.hpp>
+#include <nvs_flash.h>
 #include <freertos/queue.h>
 #include <cstring>
 
@@ -19,6 +22,19 @@ extern "C" void app_main(void)
 {
     Logger::setLevel(LogLevel::INFO);
     LOG_INFO("MAIN", "%s", "---Didgital thermometer started---");
+
+    // Initialize NVS (required before runtime thresholds can use it)
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        LOG_ERROR("MAIN", "NVS init failed: %d", static_cast<int>(err));
+    }
+
+    // Initialize runtime thresholds (load from NVS or use defaults)
+    RuntimeThresholds::init();
 
     // Create static queues
     static uint8_t temperature_data_queue_storage[32 * sizeof(TemperatureData)];
@@ -60,6 +76,8 @@ extern "C" void app_main(void)
     if (Config::Features::enable_cloud_comm) {
         CloudCommunicationTask::create(temperature_mqtt_queue, alarm_queue, command_queue, moisture_mqtt_queue);
     }
+    // Create command task to handle incoming MQTT commands
+    CommandTask::create(command_queue);
     if (Config::Features::enable_temperature_task) {
         TemperatureSensorTask::create(temperature_data_queue);
     }
