@@ -258,15 +258,30 @@ namespace {
                 prev = current;
 
                 // Update shared device state machine with reason flags
+                // Only flag reasons matching the current state severity
                 uint8_t flags = DeviceStateMachine::REASON_NONE;
-                if (ts == State::CRITICAL || ts == State::WARNING) {
-                    if (tr == Reason::TEMP_HIGH) flags |= DeviceStateMachine::REASON_TEMP_HIGH;
-                    if (tr == Reason::TEMP_LOW)  flags |= DeviceStateMachine::REASON_TEMP_LOW;
+                if (current == State::CRITICAL) {
+                    // Only flag CRITICAL conditions
+                    if (ts == State::CRITICAL) {
+                        if (tr == Reason::TEMP_HIGH) flags |= DeviceStateMachine::REASON_TEMP_HIGH;
+                        if (tr == Reason::TEMP_LOW)  flags |= DeviceStateMachine::REASON_TEMP_LOW;
+                    }
+                    if (ms == State::CRITICAL) {
+                        if (mr == Reason::MOISTURE_LOW)  flags |= DeviceStateMachine::REASON_MOIST_LOW;
+                        if (mr == Reason::MOISTURE_HIGH) flags |= DeviceStateMachine::REASON_MOIST_HIGH;
+                    }
+                } else if (current == State::WARNING) {
+                    // Only flag WARNING conditions
+                    if (ts == State::WARNING) {
+                        if (tr == Reason::TEMP_HIGH) flags |= DeviceStateMachine::REASON_TEMP_HIGH;
+                        if (tr == Reason::TEMP_LOW)  flags |= DeviceStateMachine::REASON_TEMP_LOW;
+                    }
+                    if (ms == State::WARNING) {
+                        if (mr == Reason::MOISTURE_LOW)  flags |= DeviceStateMachine::REASON_MOIST_LOW;
+                        if (mr == Reason::MOISTURE_HIGH) flags |= DeviceStateMachine::REASON_MOIST_HIGH;
+                    }
                 }
-                if (ms == State::CRITICAL || ms == State::WARNING) {
-                    if (mr == Reason::MOISTURE_LOW)  flags |= DeviceStateMachine::REASON_MOIST_LOW;
-                    if (mr == Reason::MOISTURE_HIGH) flags |= DeviceStateMachine::REASON_MOIST_HIGH;
-                }
+                // If current == State::OK, flags remain REASON_NONE
                 DeviceStateMachine::DeviceState ds = (current == State::CRITICAL)
                     ? DeviceStateMachine::DeviceState::CRITICAL
                     : (current == State::WARNING ? DeviceStateMachine::DeviceState::WARNING
