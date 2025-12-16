@@ -13,6 +13,7 @@
 #include <main/models/command.hpp>
 #include <main/state/device_state.hpp>
 #include <main/state/runtime_thresholds.hpp>
+#include <main/utils/watchdog.hpp>
 
 namespace {
     static const char* TAG = "PLANT_MON";
@@ -169,6 +170,7 @@ namespace {
     static void taskFn(void* arg) {
         (void)arg;
         LOG_INFO(TAG, "%s", "Plant Monitoring Task started");
+        Watchdog::subscribe();
         LastSamples last{};
         State current = State::OK;
         Reason cur_reason = Reason::CLEAR;
@@ -177,6 +179,7 @@ namespace {
         bool flash_phase = false;
 
         for (;;) {
+            Watchdog::feed();
             // Drain queues (non-blocking)
             TemperatureData sd{};
             while (q_temperature_data && xQueueReceive(q_temperature_data, &sd, 0) == pdTRUE) {

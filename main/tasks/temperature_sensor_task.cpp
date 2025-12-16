@@ -6,6 +6,7 @@
 #include <main/hardware/temperature_sensor.hpp>
 #include <main/models/temperature_data.hpp>
 #include <main/config/config.hpp>
+#include <main/utils/watchdog.hpp>
 
 namespace {
     static const char* TAG = "TEMP_TASK";
@@ -21,6 +22,7 @@ namespace {
     static void taskFunction(void* arg) {
         (void)arg;
         LOG_INFO(TAG, "%s", "Temperature Sensor Task started");
+        Watchdog::subscribe();
         bool inited = s_sensor.init();
         if (!inited) {
             LOG_WARN(TAG, "%s", "Sensor init failed; will retry periodically");
@@ -30,6 +32,7 @@ namespace {
         const TickType_t period = pdMS_TO_TICKS(Config::Tasks::Temperature::period_ms);
 
         for (;;) {
+            Watchdog::feed();
             if (!inited) {
                 inited = s_sensor.init();
                 if (!inited) {

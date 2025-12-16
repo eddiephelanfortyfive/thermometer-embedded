@@ -6,6 +6,7 @@
 #include <main/models/alarm_event.hpp>
 #include <main/config/config.hpp>
 #include <main/state/device_state.hpp>
+#include <main/utils/watchdog.hpp>
 
 namespace {
     static const char* TAG = "ALARM_TASK";
@@ -66,8 +67,11 @@ namespace {
             LOG_WARN(TAG, "%s", "Speaker not available for testing");
         }
 
+        Watchdog::subscribe();
+
         // Wait for alarms and act; repeat pattern in CRITICAL mode
         for (;;) {
+            Watchdog::feed();
             AlarmEvent evt{};
             // Use a short timeout so we can schedule repeated critical beeps
             if (xQueueReceive(s_alarm_queue, &evt, pdMS_TO_TICKS(100)) == pdTRUE) {

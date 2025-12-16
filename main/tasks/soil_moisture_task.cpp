@@ -5,6 +5,7 @@
 #include <main/utils/logger.hpp>
 #include <main/models/moisture_data.hpp>
 #include <main/config/config.hpp>
+#include <main/utils/watchdog.hpp>
 #include <inttypes.h>
 
 namespace {
@@ -26,6 +27,7 @@ namespace {
     static void taskFunction(void* arg) {
         (void)arg;
         LOG_INFO(TAG, "%s", "Soil Moisture Task started");
+        Watchdog::subscribe();
         bool inited = s_sensor.init();
         if (!inited) {
             LOG_WARN(TAG, "%s", "ADC init failed; will retry");
@@ -35,6 +37,7 @@ namespace {
         const TickType_t period = pdMS_TO_TICKS(Config::Tasks::Moisture::period_ms);
 
         for (;;) {
+            Watchdog::feed();
             if (!inited) {
                 inited = s_sensor.init();
                 if (!inited) {
