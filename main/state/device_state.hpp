@@ -11,6 +11,7 @@ namespace DeviceStateMachine {
         REASON_TEMP_HIGH   = 1 << 0,
         REASON_TEMP_LOW    = 1 << 1,
         REASON_MOIST_LOW   = 1 << 2,
+        REASON_MOIST_HIGH  = 1 << 3,
     };
 
     void init();

@@ -75,8 +75,10 @@ namespace Monitoring {
     static constexpr float temp_high_crit_c  = 32.0f;
 
     // Moisture thresholds (percent)
-    static constexpr float moisture_low_warn_pct  = 35.0f;
-    static constexpr float moisture_low_crit_pct  = 20.0f;
+    static constexpr float moisture_low_warn_pct   = 35.0f;
+    static constexpr float moisture_low_crit_pct   = 20.0f;
+    static constexpr float moisture_high_warn_pct  = 80.0f;
+    static constexpr float moisture_high_crit_pct  = 90.0f;
 
     // Debounce and hysteresis
     static constexpr uint32_t confirm_warn_ms = 5000;
