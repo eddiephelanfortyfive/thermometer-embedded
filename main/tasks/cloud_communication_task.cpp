@@ -10,6 +10,7 @@
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
+#include <main/models/cloud_publish_request.hpp>
 #include <inttypes.h>
 #include <cstdio>
 #include <cstring>
@@ -46,6 +47,7 @@ namespace {
     static QueueHandle_t s_alarm_queue = nullptr;
     static QueueHandle_t s_command_queue = nullptr;
     static QueueHandle_t s_moisture_mqtt_queue = nullptr;
+    static QueueHandle_t s_thresholds_changed_queue = nullptr;
 
     // Map threshold name string to command type
     static CommandType parseThresholdName(const char* name) {
@@ -478,6 +480,19 @@ namespace {
                 last_status_time = now;
             }
 
+            // Drain thresholds-changed publish requests from command task
+            if (s_thresholds_changed_queue != nullptr && s_mqtt_client.isConnected()) {
+                CloudPublishRequest req;
+                int drained = 0;
+                const int max_drain = 8;
+                while (drained < max_drain && xQueueReceive(s_thresholds_changed_queue, &req, 0) == pdTRUE) {
+                    (void)s_mqtt_client.publish(req.topic, req.payload, Config::Mqtt::default_qos, false);
+                    LOG_INFO(TAG, "MQTT TX topic=%s payload=%s", req.topic, req.payload);
+                    drained++;
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+            }
+
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
@@ -487,11 +502,13 @@ namespace CloudCommunicationTask {
     void create(QueueHandle_t temperature_mqtt_queue,
                 QueueHandle_t alarm_queue,
                 QueueHandle_t command_queue,
-                QueueHandle_t moisture_mqtt_queue) {
+                QueueHandle_t moisture_mqtt_queue,
+                QueueHandle_t thresholds_changed_queue) {
         s_temperature_mqtt_queue = temperature_mqtt_queue;
         s_alarm_queue = alarm_queue;
         s_command_queue = command_queue;
         s_moisture_mqtt_queue = moisture_mqtt_queue;
+        s_thresholds_changed_queue = thresholds_changed_queue;
         xTaskCreateStatic(taskFunction,
                           "cloud_comm",
                           sizeof(s_task_stack) / sizeof(StackType_t),
