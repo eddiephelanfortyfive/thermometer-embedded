@@ -6,8 +6,11 @@
 #include <main/models/command.hpp>
 #include <main/config/config.hpp>
 #include <main/state/runtime_thresholds.hpp>
+#include <main/models/cloud_publish_request.hpp>
+#include <main/utils/time_sync.hpp>
 #include <inttypes.h>
 #include <cstring>
+#include <cstdio>
 
 static const char* TAG = "CMD_TASK";
 
@@ -16,6 +19,7 @@ namespace {
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
 
     static QueueHandle_t s_command_queue = nullptr;
+    static QueueHandle_t s_thresholds_changed_queue = nullptr;
 
     // Validate threshold value ranges
     static bool validateTempThreshold(float value) {
@@ -125,6 +129,160 @@ namespace {
         }
     }
 
+    struct ThresholdChanges {
+        bool temp_low_warn = false;
+        bool temp_low_crit = false;
+        bool temp_high_warn = false;
+        bool temp_high_crit = false;
+        bool moisture_low_warn = false;
+        bool moisture_low_crit = false;
+        bool moisture_high_warn = false;
+        bool moisture_high_crit = false;
+
+        float v_temp_low_warn = 0.0f;
+        float v_temp_low_crit = 0.0f;
+        float v_temp_high_warn = 0.0f;
+        float v_temp_high_crit = 0.0f;
+        float v_moisture_low_warn = 0.0f;
+        float v_moisture_low_crit = 0.0f;
+        float v_moisture_high_warn = 0.0f;
+        float v_moisture_high_crit = 0.0f;
+    };
+
+    static bool applyAndRecordChange(const Command& cmd, ThresholdChanges& changes) {
+        CommandType t = static_cast<CommandType>(cmd.type);
+        bool ok = false;
+        switch (t) {
+            case CommandType::UPDATE_TEMP_LOW_WARN:
+                if (validateTempThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setTempLowWarn(cmd.value);
+                    if (ok) { changes.temp_low_warn = true; changes.v_temp_low_warn = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid temp_low_warn value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_TEMP_LOW_CRIT:
+                if (validateTempThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setTempLowCrit(cmd.value);
+                    if (ok) { changes.temp_low_crit = true; changes.v_temp_low_crit = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid temp_low_crit value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_TEMP_HIGH_WARN:
+                if (validateTempThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setTempHighWarn(cmd.value);
+                    if (ok) { changes.temp_high_warn = true; changes.v_temp_high_warn = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid temp_high_warn value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_TEMP_HIGH_CRIT:
+                if (validateTempThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setTempHighCrit(cmd.value);
+                    if (ok) { changes.temp_high_crit = true; changes.v_temp_high_crit = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid temp_high_crit value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_MOISTURE_LOW_WARN:
+                if (validateMoistureThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setMoistureLowWarn(cmd.value);
+                    if (ok) { changes.moisture_low_warn = true; changes.v_moisture_low_warn = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_low_warn value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_MOISTURE_LOW_CRIT:
+                if (validateMoistureThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setMoistureLowCrit(cmd.value);
+                    if (ok) { changes.moisture_low_crit = true; changes.v_moisture_low_crit = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_low_crit value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_MOISTURE_HIGH_WARN:
+                if (validateMoistureThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setMoistureHighWarn(cmd.value);
+                    if (ok) { changes.moisture_high_warn = true; changes.v_moisture_high_warn = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_high_warn value: %.2f", cmd.value);
+                }
+                break;
+            case CommandType::UPDATE_MOISTURE_HIGH_CRIT:
+                if (validateMoistureThreshold(cmd.value)) {
+                    ok = RuntimeThresholds::setMoistureHighCrit(cmd.value);
+                    if (ok) { changes.moisture_high_crit = true; changes.v_moisture_high_crit = cmd.value; }
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_high_crit value: %.2f", cmd.value);
+                }
+                break;
+            default:
+                // Ignore non-threshold or internal commands
+                break;
+        }
+        return ok;
+    }
+
+    static void publishAckIfAny(const ThresholdChanges& changes) {
+        if (s_thresholds_changed_queue == nullptr) {
+            return;
+        }
+        // Count changes
+        int count = (changes.temp_low_warn ? 1 : 0) +
+                    (changes.temp_low_crit ? 1 : 0) +
+                    (changes.temp_high_warn ? 1 : 0) +
+                    (changes.temp_high_crit ? 1 : 0) +
+                    (changes.moisture_low_warn ? 1 : 0) +
+                    (changes.moisture_low_crit ? 1 : 0) +
+                    (changes.moisture_high_warn ? 1 : 0) +
+                    (changes.moisture_high_crit ? 1 : 0);
+        if (count == 0) {
+            return;
+        }
+
+        CloudPublishRequest req{};
+        std::snprintf(req.topic, sizeof(req.topic),
+                      "thermometer/%s/thresholds-changed", Config::Device::id);
+
+        char ts[16];
+        TimeSync::formatFixedTimestamp(ts, sizeof(ts));
+
+        char* out = req.payload;
+        size_t cap = sizeof(req.payload);
+        int written = std::snprintf(out, cap, "{\"changes\":{");
+        size_t off = (written > 0) ? static_cast<size_t>(written) : 0;
+        bool first = true;
+        auto append_kv = [&](const char* key, float value, const char* fmt) {
+            if (!first) {
+                written = std::snprintf(out + off, cap - off, ",");
+                off += (written > 0) ? static_cast<size_t>(written) : 0;
+            }
+            written = std::snprintf(out + off, cap - off, "\"%s\":", key);
+            off += (written > 0) ? static_cast<size_t>(written) : 0;
+            written = std::snprintf(out + off, cap - off, fmt, static_cast<double>(value));
+            off += (written > 0) ? static_cast<size_t>(written) : 0;
+            first = false;
+        };
+        if (changes.temp_low_warn)  append_kv("temp_low_warn",  changes.v_temp_low_warn,  "%.2f");
+        if (changes.temp_low_crit)  append_kv("temp_low_crit",  changes.v_temp_low_crit,  "%.2f");
+        if (changes.temp_high_warn) append_kv("temp_high_warn", changes.v_temp_high_warn, "%.2f");
+        if (changes.temp_high_crit) append_kv("temp_high_crit", changes.v_temp_high_crit, "%.2f");
+        if (changes.moisture_low_warn) append_kv("moisture_low_warn", changes.v_moisture_low_warn, "%.1f");
+        if (changes.moisture_low_crit) append_kv("moisture_low_crit", changes.v_moisture_low_crit, "%.1f");
+        if (changes.moisture_high_warn) append_kv("moisture_high_warn", changes.v_moisture_high_warn, "%.1f");
+        if (changes.moisture_high_crit) append_kv("moisture_high_crit", changes.v_moisture_high_crit, "%.1f");
+
+        written = std::snprintf(out + off, cap - off, "},\"ts\":\"%s\",\"status\":\"ok\"}", ts);
+        (void)written;
+
+        if (xQueueSend(s_thresholds_changed_queue, &req, 0) != pdTRUE) {
+            LOG_WARN(TAG, "%s", "thresholds_changed_queue full, dropped thresholds-changed ACK");
+        } else {
+            LOG_INFO(TAG, "Enqueued thresholds-changed ACK: %s", req.payload);
+        }
+    }
+
     static void taskFunction(void* arg) {
         (void)arg;
         LOG_INFO(TAG, "%s", "Command Task started");
@@ -132,16 +290,49 @@ namespace {
         Command cmd;
         for (;;) {
             // Block waiting for commands
-            if (xQueueReceive(s_command_queue, &cmd, portMAX_DELAY) == pdTRUE) {
-                handleCommand(cmd);
+            if (xQueueReceive(s_command_queue, &cmd, portMAX_DELAY) != pdTRUE) {
+                continue;
             }
+            // Only handle external threshold updates here
+            if (cmd.type >= 0) {
+                continue;
+            }
+
+            // Start batch: apply first command and then accumulate changes for a brief window
+            ThresholdChanges changes{};
+            (void)applyAndRecordChange(cmd, changes);
+
+            TickType_t start = xTaskGetTickCount();
+            const TickType_t window = pdMS_TO_TICKS(50);
+            for (;;) {
+                // If window elapsed, stop accumulating
+                if ((xTaskGetTickCount() - start) > window) {
+                    break;
+                }
+                Command next{};
+                if (xQueueReceive(s_command_queue, &next, 0) == pdTRUE) {
+                    if (next.type < 0) {
+                        (void)applyAndRecordChange(next, changes);
+                    } else {
+                        // Not ours; push back to front for the other consumer
+                        (void)xQueueSendToFront(s_command_queue, &next, 0);
+                        break;
+                    }
+                } else {
+                    // brief sleep within window to allow queue to fill
+                    vTaskDelay(pdMS_TO_TICKS(5));
+                }
+            }
+
+            publishAckIfAny(changes);
         }
     }
 }
 
 namespace CommandTask {
-    void create(QueueHandle_t command_queue) {
+    void create(QueueHandle_t command_queue, QueueHandle_t thresholds_changed_queue) {
         s_command_queue = command_queue;
+        s_thresholds_changed_queue = thresholds_changed_queue;
         xTaskCreateStatic(taskFunction,
                           "cmd_task",
                           sizeof(s_task_stack) / sizeof(StackType_t),

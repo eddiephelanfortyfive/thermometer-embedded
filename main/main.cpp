@@ -13,6 +13,7 @@
 #include <main/models/alarm_event.hpp>
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
+#include <main/models/cloud_publish_request.hpp>
 #include <main/state/runtime_thresholds.hpp>
 #include <main/utils/watchdog.hpp>
 #include <nvs_flash.h>
@@ -76,12 +77,18 @@ extern "C" void app_main(void)
     QueueHandle_t moisture_mqtt_queue = xQueueCreateStatic(
         1, sizeof(MoistureData), moisture_mqtt_queue_storage, &moisture_mqtt_queue_tcb);
 
+    // Thresholds-changed queue for consolidated ACKs
+    static uint8_t thresholds_changed_queue_storage[4 * sizeof(CloudPublishRequest)];
+    static StaticQueue_t thresholds_changed_queue_tcb;
+    QueueHandle_t thresholds_changed_queue = xQueueCreateStatic(
+        4, sizeof(CloudPublishRequest), thresholds_changed_queue_storage, &thresholds_changed_queue_tcb);
+
     // Start tasks (honor feature toggles)
     if (Config::Features::enable_cloud_comm) {
-        CloudCommunicationTask::create(temperature_mqtt_queue, alarm_queue, command_queue, moisture_mqtt_queue);
+        CloudCommunicationTask::create(temperature_mqtt_queue, alarm_queue, command_queue, moisture_mqtt_queue, thresholds_changed_queue);
     }
     // Create command task to handle incoming MQTT commands
-    CommandTask::create(command_queue);
+    CommandTask::create(command_queue, thresholds_changed_queue);
     if (Config::Features::enable_temperature_task) {
         TemperatureSensorTask::create(temperature_data_queue);
     }
