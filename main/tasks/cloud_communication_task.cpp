@@ -55,6 +55,8 @@ namespace {
         if (std::strcmp(name, "temp_high_crit") == 0) return CommandType::UPDATE_TEMP_HIGH_CRIT;
         if (std::strcmp(name, "moisture_low_warn") == 0) return CommandType::UPDATE_MOISTURE_LOW_WARN;
         if (std::strcmp(name, "moisture_low_crit") == 0) return CommandType::UPDATE_MOISTURE_LOW_CRIT;
+        if (std::strcmp(name, "moisture_high_warn") == 0) return CommandType::UPDATE_MOISTURE_HIGH_WARN;
+        if (std::strcmp(name, "moisture_high_crit") == 0) return CommandType::UPDATE_MOISTURE_HIGH_CRIT;
         return static_cast<CommandType>(0); // Invalid
     }
 
@@ -295,9 +297,10 @@ namespace {
                         std::snprintf(reasons_str + cur, sizeof(reasons_str) - cur, "\"%s\"", name);
                         first_reason = false;
                     };
-                    if (rf & DeviceStateMachine::REASON_TEMP_HIGH) append_reason("temp_high");
-                    if (rf & DeviceStateMachine::REASON_TEMP_LOW)  append_reason("temp_low");
-                    if (rf & DeviceStateMachine::REASON_MOIST_LOW) append_reason("moisture_low");
+                    if (rf & DeviceStateMachine::REASON_TEMP_HIGH)  append_reason("temp_high");
+                    if (rf & DeviceStateMachine::REASON_TEMP_LOW)   append_reason("temp_low");
+                    if (rf & DeviceStateMachine::REASON_MOIST_LOW)  append_reason("moisture_low");
+                    if (rf & DeviceStateMachine::REASON_MOIST_HIGH) append_reason("moisture_high");
                     if (first_reason) {
                         std::snprintf(payload, sizeof(payload),
                                       "{\"state\":\"%s\",\"temp\":%.2f,\"moisture\":%.1f,\"ts\":\"%s\",\"snapshot\":1}",
@@ -390,7 +393,7 @@ namespace {
             }
 
             // Handle internal alert publish requests via command queue:
-            // Command.type = state (0 OK, 1 WARNING, 2 CRITICAL), Command.value = reason (0 CLEAR,1 TEMP_HIGH,2 TEMP_LOW,3 MOISTURE_LOW)
+            // Command.type = state (0 OK, 1 WARNING, 2 CRITICAL), Command.value = reason (0 CLEAR,1 TEMP_HIGH,2 TEMP_LOW,3 MOISTURE_LOW,4 MOISTURE_HIGH)
             // Only process internal commands (type >= 0); external commands (type < 0) are handled by command task
             if (s_command_queue != nullptr && s_mqtt_client.isConnected()) {
                 Command cmd{};
@@ -410,7 +413,7 @@ namespace {
                     int reason = static_cast<int>(cmd.value);
                     const char* s_str = (state == 2) ? "CRITICAL" : (state == 1) ? "WARNING" : "OK";
                     const char* r_str = (reason == 1) ? "temp_high" : (reason == 2) ? "temp_low"
-                                         : (reason == 3) ? "moisture_low" : "clear";
+                                         : (reason == 3) ? "moisture_low" : (reason == 4) ? "moisture_high" : "clear";
                     char topic[96];
                     char payload[192];
                     char ts[16];
@@ -453,9 +456,10 @@ namespace {
                     std::snprintf(reasons_str + cur, sizeof(reasons_str) - cur, "\"%s\"", name);
                     first = false;
                 };
-                if (rf & DeviceStateMachine::REASON_TEMP_HIGH) append_reason("temp_high");
-                if (rf & DeviceStateMachine::REASON_TEMP_LOW)  append_reason("temp_low");
-                if (rf & DeviceStateMachine::REASON_MOIST_LOW) append_reason("moisture_low");
+                if (rf & DeviceStateMachine::REASON_TEMP_HIGH)  append_reason("temp_high");
+                if (rf & DeviceStateMachine::REASON_TEMP_LOW)   append_reason("temp_low");
+                if (rf & DeviceStateMachine::REASON_MOIST_LOW)  append_reason("moisture_low");
+                if (rf & DeviceStateMachine::REASON_MOIST_HIGH) append_reason("moisture_high");
                 if (first) {
                     // No reasons
                     reasons_str[0] = '\0';

@@ -22,10 +22,14 @@ namespace RuntimeThresholds {
     // Moisture threshold getters
     float getMoistureLowWarn();
     float getMoistureLowCrit();
+    float getMoistureHighWarn();
+    float getMoistureHighCrit();
 
     // Moisture threshold setters (persist to NVS)
     bool setMoistureLowWarn(float value);
     bool setMoistureLowCrit(float value);
+    bool setMoistureHighWarn(float value);
+    bool setMoistureHighCrit(float value);
 }
 
 #endif // RUNTIME_THRESHOLDS_HPP

@@ -95,6 +95,24 @@ namespace {
                 }
                 break;
 
+            case CommandType::UPDATE_MOISTURE_HIGH_WARN:
+                if (validateMoistureThreshold(cmd.value)) {
+                    success = RuntimeThresholds::setMoistureHighWarn(cmd.value);
+                    threshold_name = "moisture_high_warn";
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_high_warn value: %.2f", cmd.value);
+                }
+                break;
+
+            case CommandType::UPDATE_MOISTURE_HIGH_CRIT:
+                if (validateMoistureThreshold(cmd.value)) {
+                    success = RuntimeThresholds::setMoistureHighCrit(cmd.value);
+                    threshold_name = "moisture_high_crit";
+                } else {
+                    LOG_ERROR(TAG, "Invalid moisture_high_crit value: %.2f", cmd.value);
+                }
+                break;
+
             default:
                 LOG_WARN(TAG, "Unknown command type: %" PRId32, cmd.type);
                 return;

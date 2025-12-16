@@ -18,6 +18,8 @@ namespace {
         float temp_high_crit_c;
         float moisture_low_warn_pct;
         float moisture_low_crit_pct;
+        float moisture_high_warn_pct;
+        float moisture_high_crit_pct;
     };
 
     static ThresholdData s_data;
@@ -36,6 +38,8 @@ namespace {
         s_data.temp_high_crit_c = temp_high_crit_c;
         s_data.moisture_low_warn_pct = moisture_low_warn_pct;
         s_data.moisture_low_crit_pct = moisture_low_crit_pct;
+        s_data.moisture_high_warn_pct = moisture_high_warn_pct;
+        s_data.moisture_high_crit_pct = moisture_high_crit_pct;
     }
 
     static bool loadFromNvs() {
@@ -300,6 +304,74 @@ namespace RuntimeThresholds {
         bool ok = saveToNvs();
         if (ok) {
             LOG_INFO(TAG, "Updated moisture_low_crit to %.1f", value);
+        }
+        return ok;
+    }
+
+    float getMoistureHighWarn() {
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskENTER_CRITICAL(&s_mux);
+#else
+        taskENTER_CRITICAL();
+#endif
+        float val = s_data.moisture_high_warn_pct;
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskEXIT_CRITICAL(&s_mux);
+#else
+        taskEXIT_CRITICAL();
+#endif
+        return val;
+    }
+
+    float getMoistureHighCrit() {
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskENTER_CRITICAL(&s_mux);
+#else
+        taskENTER_CRITICAL();
+#endif
+        float val = s_data.moisture_high_crit_pct;
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskEXIT_CRITICAL(&s_mux);
+#else
+        taskEXIT_CRITICAL();
+#endif
+        return val;
+    }
+
+    bool setMoistureHighWarn(float value) {
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskENTER_CRITICAL(&s_mux);
+#else
+        taskENTER_CRITICAL();
+#endif
+        s_data.moisture_high_warn_pct = value;
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskEXIT_CRITICAL(&s_mux);
+#else
+        taskEXIT_CRITICAL();
+#endif
+        bool ok = saveToNvs();
+        if (ok) {
+            LOG_INFO(TAG, "Updated moisture_high_warn to %.1f", value);
+        }
+        return ok;
+    }
+
+    bool setMoistureHighCrit(float value) {
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskENTER_CRITICAL(&s_mux);
+#else
+        taskENTER_CRITICAL();
+#endif
+        s_data.moisture_high_crit_pct = value;
+#if defined(CONFIG_FREERTOS_UNICORE) || defined(portMUX_INITIALIZER_UNLOCKED)
+        taskEXIT_CRITICAL(&s_mux);
+#else
+        taskEXIT_CRITICAL();
+#endif
+        bool ok = saveToNvs();
+        if (ok) {
+            LOG_INFO(TAG, "Updated moisture_high_crit to %.1f", value);
         }
         return ok;
     }

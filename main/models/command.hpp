@@ -26,6 +26,8 @@ enum class CommandType : int32_t {
     UPDATE_TEMP_HIGH_CRIT = -4,
     UPDATE_MOISTURE_LOW_WARN = -5,
     UPDATE_MOISTURE_LOW_CRIT = -6,
+    UPDATE_MOISTURE_HIGH_WARN = -7,
+    UPDATE_MOISTURE_HIGH_CRIT = -8,
 };
 
 #endif // COMMAND_HPP

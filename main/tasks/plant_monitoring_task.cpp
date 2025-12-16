@@ -31,7 +31,7 @@ namespace {
     static QueueHandle_t q_moisture_mqtt  = nullptr;
 
     enum class State : uint8_t { OK = 0, WARNING = 1, CRITICAL = 2 };
-    enum class Reason : uint8_t { CLEAR = 0, TEMP_HIGH = 1, TEMP_LOW = 2, MOISTURE_LOW = 3 };
+    enum class Reason : uint8_t { CLEAR = 0, TEMP_HIGH = 1, TEMP_LOW = 2, MOISTURE_LOW = 3, MOISTURE_HIGH = 4 };
 
     struct LastSamples {
         bool     has_temp = false;
@@ -121,6 +121,8 @@ namespace {
         // Cache thresholds to avoid repeated function calls
         static float cached_moisture_low_crit = 0.0f;
         static float cached_moisture_low_warn = 0.0f;
+        static float cached_moisture_high_crit = 0.0f;
+        static float cached_moisture_high_warn = 0.0f;
         static TickType_t last_cache_update = 0;
         
         TickType_t now = xTaskGetTickCount();
@@ -128,11 +130,15 @@ namespace {
         if ((now - last_cache_update) > pdMS_TO_TICKS(5000) || last_cache_update == 0) {
             cached_moisture_low_crit = RuntimeThresholds::getMoistureLowCrit();
             cached_moisture_low_warn = RuntimeThresholds::getMoistureLowWarn();
+            cached_moisture_high_crit = RuntimeThresholds::getMoistureHighCrit();
+            cached_moisture_high_warn = RuntimeThresholds::getMoistureHighWarn();
             last_cache_update = now;
         }
 
-        if (m <= cached_moisture_low_crit) { r = Reason::MOISTURE_LOW; return State::CRITICAL; }
-        if (m <= cached_moisture_low_warn) { r = Reason::MOISTURE_LOW; return State::WARNING; }
+        if (m <= cached_moisture_low_crit)  { r = Reason::MOISTURE_LOW;  return State::CRITICAL; }
+        if (m >= cached_moisture_high_crit) { r = Reason::MOISTURE_HIGH; return State::CRITICAL; }
+        if (m <= cached_moisture_low_warn)  { r = Reason::MOISTURE_LOW;  return State::WARNING; }
+        if (m >= cached_moisture_high_warn) { r = Reason::MOISTURE_HIGH; return State::WARNING; }
         r = Reason::CLEAR; return State::OK;
     }
 
@@ -161,7 +167,7 @@ namespace {
         if (!q_cmd) return;
         Command c{};
         c.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        // Encode: type = state (0,1,2), value = reason code (0..3)
+        // Encode: type = state (0,1,2), value = reason code (0..4)
         c.type  = static_cast<int32_t>(s);
         c.value = static_cast<float>(static_cast<uint32_t>(r));
         (void)xQueueSend(q_cmd, &c, 0);
@@ -258,7 +264,8 @@ namespace {
                     if (tr == Reason::TEMP_LOW)  flags |= DeviceStateMachine::REASON_TEMP_LOW;
                 }
                 if (ms == State::CRITICAL || ms == State::WARNING) {
-                    flags |= DeviceStateMachine::REASON_MOIST_LOW;
+                    if (mr == Reason::MOISTURE_LOW)  flags |= DeviceStateMachine::REASON_MOIST_LOW;
+                    if (mr == Reason::MOISTURE_HIGH) flags |= DeviceStateMachine::REASON_MOIST_HIGH;
                 }
                 DeviceStateMachine::DeviceState ds = (current == State::CRITICAL)
                     ? DeviceStateMachine::DeviceState::CRITICAL
