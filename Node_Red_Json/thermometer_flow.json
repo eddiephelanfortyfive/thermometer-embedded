@@ -1,0 +1,1067 @@
+[
+    {
+        "id": "1ba1eefc79b1c65a",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "451afe284418c15f",
+        "type": "mqtt in",
+        "z": "1ba1eefc79b1c65a",
+        "name": "",
+        "topic": "thermometer/thermo-001/moisture",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "51157f84be066d8e",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 180,
+        "y": 400,
+        "wires": [
+            [
+                "856a9dd45bbdba4b",
+                "eda9e494e56f821d"
+            ]
+        ]
+    },
+    {
+        "id": "3ebbab6c85928846",
+        "type": "mqtt in",
+        "z": "1ba1eefc79b1c65a",
+        "name": "",
+        "topic": "thermometer/thermo-001/temperature",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "51157f84be066d8e",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 190,
+        "y": 240,
+        "wires": [
+            [
+                "1bcaecc307b5cbef",
+                "90e215ef5e716aef"
+            ]
+        ]
+    },
+    {
+        "id": "1bcaecc307b5cbef",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 1",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 100,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "856a9dd45bbdba4b",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 2",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 100,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "344dbff9caabee39",
+        "type": "mqtt in",
+        "z": "1ba1eefc79b1c65a",
+        "name": "",
+        "topic": "thermometer/thermo-001/status",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "51157f84be066d8e",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 170,
+        "y": 560,
+        "wires": [
+            [
+                "7e6793cade365eae",
+                "60a9108ddf33a56f"
+            ]
+        ]
+    },
+    {
+        "id": "7e6793cade365eae",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 4",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 100,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "90e215ef5e716aef",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Temp",
+        "func": "// msg.payload is your numeric temperature, e.g. 15.56\nlet payload = msg.payload;\npayload.temperature = payload.value;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 490,
+        "y": 240,
+        "wires": [
+            [
+                "9f88a681f1c5bbae",
+                "6ae03db94a3190b2"
+            ]
+        ]
+    },
+    {
+        "id": "eda9e494e56f821d",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Moisture",
+        "func": "let payload = msg.payload;\nmsg.moisture = payload.percent;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 500,
+        "y": 400,
+        "wires": [
+            [
+                "f53b5445ac1a0063",
+                "971bca71a8412121"
+            ]
+        ]
+    },
+    {
+        "id": "61419fe87e238d50",
+        "type": "inject",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Tesp moisture data",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "thermometer/thermo-001/moisture",
+        "payload": "{\"percent\":0.0}",
+        "payloadType": "json",
+        "x": 330,
+        "y": 300,
+        "wires": [
+            [
+                "eda9e494e56f821d"
+            ]
+        ]
+    },
+    {
+        "id": "a83a0f762dc7af73",
+        "type": "inject",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Test status",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "topic=thermometer/thermo-001/status",
+        "payload": "{\"status\":\"online\",\"uptime_ms\":35540,\"buffered\":0,\"state\":\"CRITICAL\",\"reasons\":[\"moisture_low\"]}",
+        "payloadType": "json",
+        "x": 300,
+        "y": 480,
+        "wires": [
+            [
+                "60a9108ddf33a56f"
+            ]
+        ]
+    },
+    {
+        "id": "2b0d5b91bf1db1ed",
+        "type": "inject",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Test temp data",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "thermometer/thermo-001/temperature",
+        "payload": "{\"value\": 23.5}",
+        "payloadType": "json",
+        "x": 320,
+        "y": 160,
+        "wires": [
+            [
+                "90e215ef5e716aef"
+            ]
+        ]
+    },
+    {
+        "id": "9f88a681f1c5bbae",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 3",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 560,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "6ae03db94a3190b2",
+        "type": "ui-template",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "page": "",
+        "ui": "",
+        "name": "Display Temp",
+        "order": 1,
+        "width": 5,
+        "height": 0,
+        "head": "",
+        "format": "<template>\n  <div style=\"font-size: 4rem; font-weight: 600; color: black;\">\n    Temperature: {{ msg.payload.temperature }} °C\n  </div>\n</template>\n\n\n\n<script>\n    export default {\n        data() {\n            // define variables available component-wide\n            // (in <template> and component functions)\n            return {\n                count: 0\n            }\n        },\n        watch: {\n            // watch for any changes of \"count\"\n            count: function () {\n                if (this.count % 5 === 0) {\n                    this.send({payload: 'Multiple of 5'})\n                }\n            }\n        },\n        computed: {\n            // automatically compute this variable\n            // whenever VueJS deems appropriate\n            formattedCount: function () {\n                return this.count + ' Apples'\n            }\n        },\n        methods: {\n            // expose a method to our <template> and Vue Application\n            increase: function () {\n                this.count++\n            }\n        },\n        mounted() {\n            // code here when the component is first loaded\n        },\n        unmounted() {\n            // code here when the component is removed from the Dashboard\n            // i.e. when the user navigates away from the page\n        }\n    }\n</script>\n<style>\n    /* define any styles here - supports raw CSS */\n    .my-class {\n        color: red;\n    }\n</style>",
+        "storeOutMessages": true,
+        "passthru": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 740,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "971bca71a8412121",
+        "type": "ui-template",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "page": "",
+        "ui": "",
+        "name": "Display moisture",
+        "order": 3,
+        "width": 5,
+        "height": 0,
+        "head": "",
+        "format": "<template>\n  <div style=\"font-size: 4rem; font-weight: 600; color: black;\">\n    Moisture: {{ msg.payload.percent }} %\n  </div>\n</template>\n\n\n<script>\n    export default {\n        data() {\n            // define variables available component-wide\n            // (in <template> and component functions)\n            return {\n                count: 0\n            }\n        },\n        watch: {\n            // watch for any changes of \"count\"\n            count: function () {\n                if (this.count % 5 === 0) {\n                    this.send({payload: 'Multiple of 5'})\n                }\n            }\n        },\n        computed: {\n            // automatically compute this variable\n            // whenever VueJS deems appropriate\n            formattedCount: function () {\n                return this.count + ' Apples'\n            }\n        },\n        methods: {\n            // expose a method to our <template> and Vue Application\n            increase: function () {\n                this.count++\n            }\n        },\n        mounted() {\n            // code here when the component is first loaded\n        },\n        unmounted() {\n            // code here when the component is removed from the Dashboard\n            // i.e. when the user navigates away from the page\n        }\n    }\n</script>\n<style>\n    /* define any styles here - supports raw CSS */\n    .my-class {\n        color: red;\n    }\n</style>",
+        "storeOutMessages": true,
+        "passthru": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 750,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "60a9108ddf33a56f",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Status colour",
+        "func": "// msg.payload = { status, uptime_ms, buffered, state, reasons: [...] }\n\nconst p = msg.payload || {};\nconst rawState = (p.state || \"OK\").toUpperCase();   // \"CRITICAL\" here\nconst reasons = Array.isArray(p.reasons) ? p.reasons : [];\nconst reason = reasons[0] || \"\";\n\n// Map state to label + colour\nlet label = \"OK\";\nlet color = \"green\";\n\nif (rawState === \"WARN\" || rawState === \"WARNING\") {\n  label = \"WARNING\";\n  color = \"orange\";\n} else if (rawState === \"CRITICAL\") {\n  label = \"CRITICAL\";\n  color = \"red\";\n}\n\nmsg.payload.stateLabel = label;\nmsg.payload.stateColor = color;\nmsg.payload.stateReason = reason;\n\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 560,
+        "wires": [
+            [
+                "89cd34a8e7b66653",
+                "bf8380e971486b38"
+            ]
+        ]
+    },
+    {
+        "id": "f53b5445ac1a0063",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 5",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 560,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "89cd34a8e7b66653",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 6",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 520,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "8ce5c68b8bd5a6c3",
+        "type": "inject",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Test Updating thresholds",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "thermometer/thermo-001/cmd",
+        "payload": "{   \"command\": \"update_thresholds\",   \"temp_high_crit\": 31.0,   \"temp_high_warn\": 26.0,   \"temp_low_warn\": 13.0 }",
+        "payloadType": "json",
+        "x": 130,
+        "y": 60,
+        "wires": [
+            [
+                "8a18d597be99e86c"
+            ]
+        ]
+    },
+    {
+        "id": "8a18d597be99e86c",
+        "type": "mqtt out",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Thresholds commands",
+        "topic": "thermometer/thermo-001/cmd",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "51157f84be066d8e",
+        "x": 560,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "bf8380e971486b38",
+        "type": "ui-template",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "page": "",
+        "ui": "",
+        "name": "Display state",
+        "order": 4,
+        "width": "12",
+        "height": "3",
+        "head": "",
+        "format": "<template>\n  <div :style=\"{ fontSize: '6rem', fontWeight: 600, color: msg.payload.stateColor }\">\n    {{ msg.payload.stateLabel }}\n    <span :style=\"{ fontWeight: 400, color: msg.payload.stateColor }\">\n      {{ msg.payload.stateReason ? (' : ' + msg.payload.stateReason) : '' }}\n    </span>\n  </div>\n</template>\n\n\n<script>\n    export default {\n        data() {\n            // define variables available component-wide\n            // (in <template> and component functions)\n            return {\n                count: 0\n            }\n        },\n        watch: {\n            // watch for any changes of \"count\"\n            count: function () {\n                if (this.count % 5 === 0) {\n                    this.send({payload: 'Multiple of 5'})\n                }\n            }\n        },\n        computed: {\n            // automatically compute this variable\n            // whenever VueJS deems appropriate\n            formattedCount: function () {\n                return this.count + ' Apples'\n            }\n        },\n        methods: {\n            // expose a method to our <template> and Vue Application\n            increase: function () {\n                this.count++\n            }\n        },\n        mounted() {\n            // code here when the component is first loaded\n        },\n        unmounted() {\n            // code here when the component is removed from the Dashboard\n            // i.e. when the user navigates away from the page\n        }\n    }\n</script>\n<style>\n    /* define any styles here - supports raw CSS */\n    .my-class {\n        color: red;\n    }\n</style>",
+        "storeOutMessages": true,
+        "passthru": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 730,
+        "y": 560,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "fed81c7724336331",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Critial High Temperature threshold",
+        "label": "Critial High Temperature threshold",
+        "order": 5,
+        "width": 6,
+        "height": "1",
+        "topic": "temp_high_crit",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 180,
+        "y": 680,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "edf2da4bdc64c893",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Critial Low Temperature threshold",
+        "label": "Critial Low Temperature threshold",
+        "order": 11,
+        "width": 6,
+        "height": "1",
+        "topic": "temp_low_crit",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 180,
+        "y": 640,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "2792ca1d8ab82dcb",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Warning High Temperature threshold",
+        "label": "Warning High Temperature threshold",
+        "order": 7,
+        "width": 6,
+        "height": "1",
+        "topic": "temp_high_warn",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 190,
+        "y": 720,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "d72ba891b55d5a1f",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Warning Low Temperature threshold",
+        "label": "Warning Low Temperature threshold",
+        "order": 9,
+        "width": 6,
+        "height": "1",
+        "topic": "temp_low_warn",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 190,
+        "y": 760,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "7295e3cdfe26592f",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Critical Low Moisture threshold",
+        "label": "Critical Low Moisture threshold",
+        "order": 12,
+        "width": 6,
+        "height": "1",
+        "topic": "moisture_low_crit",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 170,
+        "y": 820,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "70fc5cd4e5a808b5",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Warning Low Moisture threshold",
+        "label": "Warning Low Moisture threshold",
+        "order": 10,
+        "width": 6,
+        "height": "1",
+        "topic": "moisture_low_warn",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 170,
+        "y": 860,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "d0246bd95602ebe4",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Command message",
+        "func": "// Command message\nlet thresholds = flow.get('thresholds') || {};\n\nlet cmd = { command: \"update_thresholds\" };\n\nfor (let k of [\n    \"temp_high_crit\",\n    \"temp_high_warn\",\n    \"temp_low_warn\",\n    \"temp_low_crit\",\n    \"moisture_high_warn\",\n    \"moisture_high_crit\",\n    \"moisture_low_warn\",\n    \"moisture_low_crit\"\n]) {\n    if (Number.isFinite(thresholds[k])) {\n        cmd[k] = thresholds[k];\n    }\n}\n\nmsg.payload = JSON.stringify(cmd); // or cmd if you use a json node later\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 800,
+        "wires": [
+            [
+                "7259aec6b74d8a80",
+                "126233d9f0d7b0cf"
+            ]
+        ]
+    },
+    {
+        "id": "7259aec6b74d8a80",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 7",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1000,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "19a0e61a95d52ed5",
+        "type": "ui-button",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Command Trigger",
+        "label": "Update Device Thresholds",
+        "order": 13,
+        "width": 12,
+        "height": 1,
+        "emulateClick": false,
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "iconPosition": "left",
+        "payload": "1",
+        "payloadType": "num",
+        "topic": "Update_threshold",
+        "topicType": "str",
+        "buttonColor": "",
+        "textColor": "",
+        "iconColor": "",
+        "enableClick": true,
+        "enablePointerdown": false,
+        "pointerdownPayload": "",
+        "pointerdownPayloadType": "str",
+        "enablePointerup": false,
+        "pointerupPayload": "",
+        "pointerupPayloadType": "str",
+        "x": 710,
+        "y": 800,
+        "wires": [
+            [
+                "d0246bd95602ebe4",
+                "5bd1d3cd5db9c13e"
+            ]
+        ]
+    },
+    {
+        "id": "f991d9f1192f8046",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Store Values",
+        "func": "// Store Values\nlet thresholds = flow.get('thresholds') || {};\n\nif (msg.topic && msg.payload !== \"\" && msg.payload !== null) {\n    thresholds[msg.topic] = Number(msg.payload);\n    flow.set('thresholds', thresholds);\n}\n\nreturn null;  // nothing goes on from here\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 800,
+        "wires": [
+            [
+                "19a0e61a95d52ed5"
+            ]
+        ]
+    },
+    {
+        "id": "5bd1d3cd5db9c13e",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 9",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "126233d9f0d7b0cf",
+        "type": "mqtt out",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Command message.",
+        "topic": "thermometer/thermo-001/cmd",
+        "qos": "1",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "51157f84be066d8e",
+        "x": 1240,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "6bdef4ad5f1fd540",
+        "type": "mqtt in",
+        "z": "1ba1eefc79b1c65a",
+        "name": "",
+        "topic": "thermometer/thermo-001/thresholds-changed",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "51157f84be066d8e",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 210,
+        "y": 1040,
+        "wires": [
+            [
+                "4ba2f6047a68e65e",
+                "df0dede71336fad4"
+            ]
+        ]
+    },
+    {
+        "id": "4ba2f6047a68e65e",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 8",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 480,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "df0dede71336fad4",
+        "type": "function",
+        "z": "1ba1eefc79b1c65a",
+        "name": "Build text color ",
+        "func": "let p = msg.payload || {};\nlet changes = p.changes || {};\n\n// Build a readable list of changes\nlet parts = [];\nfor (let [k, v] of Object.entries(changes)) {\n    if (Number.isFinite(v)) {\n        parts.push(`${k} = ${v}`);\n    }\n}\n\n// Decide success\nlet ok = (p.status == \"ok\") && parts.length > 0;\n\nlet text;\nif (ok) {\n    text = \"Thresholds updated: \" + parts.join(\", \");\n    msg.color = \"green\";\n} else {\n    text = \"Failed to update thresholds.\";\n    msg.color = \"red\";\n}\n\nmsg.payload = text;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 540,
+        "y": 1040,
+        "wires": [
+            [
+                "a4bd3b675620a82a",
+                "d54f5a2ebe28c6e5"
+            ]
+        ]
+    },
+    {
+        "id": "a4bd3b675620a82a",
+        "type": "ui-template",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "page": "",
+        "ui": "",
+        "name": "Display acknoledge message",
+        "order": 14,
+        "width": "12",
+        "height": "2",
+        "head": "",
+        "format": "<div style=\"font-size: 1.6rem; font-weight: bold;\" ng-style=\"{ color: msg.color }\">\n    {{msg.payload}}\n</div>\n\n\n\n<script>\n    export default {\n        data() {\n            // define variables available component-wide\n            // (in <template> and component functions)\n            return {\n                count: 0\n            }\n        },\n        watch: {\n            // watch for any changes of \"count\"\n            count: function () {\n                if (this.count % 5 === 0) {\n                    this.send({payload: 'Multiple of 5'})\n                }\n            }\n        },\n        computed: {\n            // automatically compute this variable\n            // whenever VueJS deems appropriate\n            formattedCount: function () {\n                return this.count + ' Apples'\n            }\n        },\n        methods: {\n            // expose a method to our <template> and Vue Application\n            increase: function () {\n                this.count++\n            }\n        },\n        mounted() {\n            // code here when the component is first loaded\n        },\n        unmounted() {\n            // code here when the component is removed from the Dashboard\n            // i.e. when the user navigates away from the page\n        }\n    }\n</script>\n<style>\n    /* define any styles here - supports raw CSS */\n    .my-class {\n        color: red;\n    }\n</style>",
+        "storeOutMessages": true,
+        "passthru": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 840,
+        "y": 1040,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d54f5a2ebe28c6e5",
+        "type": "debug",
+        "z": "1ba1eefc79b1c65a",
+        "name": "debug 10",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 740,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "fe7d1da8d8b26272",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Critical High Moisture threshold",
+        "label": "Critical High Moisture threshold",
+        "order": 6,
+        "width": 6,
+        "height": "1",
+        "topic": "moisture_high_crit",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 170,
+        "y": 900,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "a50967ce67fdd00c",
+        "type": "ui-number-input",
+        "z": "1ba1eefc79b1c65a",
+        "group": "7e30f6f5d2a25b88",
+        "name": "Warning High Moisture threshold",
+        "label": "Warning High Moisture threshold",
+        "order": 8,
+        "width": 6,
+        "height": "1",
+        "topic": "moisture_high_warn",
+        "topicType": "str",
+        "min": 0,
+        "max": "100",
+        "step": "0.1",
+        "tooltip": "",
+        "passthru": true,
+        "sendOnBlur": true,
+        "sendOnEnter": true,
+        "className": "",
+        "clearable": true,
+        "icon": "",
+        "iconPosition": "left",
+        "iconInnerPosition": "inside",
+        "spinner": "default",
+        "x": 180,
+        "y": 940,
+        "wires": [
+            [
+                "f991d9f1192f8046"
+            ]
+        ]
+    },
+    {
+        "id": "51157f84be066d8e",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "localhost",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "7e30f6f5d2a25b88",
+        "type": "ui-group",
+        "name": "thermo-001",
+        "page": "035cc71a3dfb6da7",
+        "width": 12,
+        "height": 1,
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "035cc71a3dfb6da7",
+        "type": "ui-page",
+        "name": "Greenhouse monitoring dashboard",
+        "ui": "54004a39059f5f03",
+        "path": "/Greenhouse monitoring dashboard",
+        "icon": "home",
+        "layout": "grid",
+        "theme": "ed31793b377918e1",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": "0",
+                "cols": "3"
+            },
+            {
+                "name": "Tablet",
+                "px": "576",
+                "cols": "6"
+            },
+            {
+                "name": "Small Desktop",
+                "px": "768",
+                "cols": "9"
+            },
+            {
+                "name": "Desktop",
+                "px": "1024",
+                "cols": "12"
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "54004a39059f5f03",
+        "type": "ui-base",
+        "name": "My Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default",
+        "showReconnectNotification": true,
+        "notificationDisplayTime": 1,
+        "showDisconnectNotification": true,
+        "allowInstall": false
+    },
+    {
+        "id": "ed31793b377918e1",
+        "type": "ui-theme",
+        "name": "Theme Name",
+        "colors": {
+            "surface": "#006b07",
+            "primary": "#00d62b",
+            "bgPage": "#944300",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    },
+    {
+        "id": "992537531fa63ba3",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "@flowfuse/node-red-dashboard": "1.29.0"
+        }
+    }
+]

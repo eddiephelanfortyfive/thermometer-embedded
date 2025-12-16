@@ -23,7 +23,7 @@
 extern "C" void app_main(void)
 {
     Logger::setLevel(LogLevel::INFO);
-    LOG_INFO("MAIN", "%s", "---Didgital thermometer started---");
+    LOG_INFO("MAIN", "%s", "---Digital thermometer started---");
 
     // Initialize NVS (required before runtime thresholds can use it)
     esp_err_t err = nvs_flash_init();

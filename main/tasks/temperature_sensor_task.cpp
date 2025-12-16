@@ -41,6 +41,8 @@ namespace {
                     continue;
                 } else {
                     LOG_INFO(TAG, "%s", "Sensor init successful");
+                    // Reset timing baseline to maintain absolute periodicity after recovery
+                    last_wake = xTaskGetTickCount();
                 }
             }
 
