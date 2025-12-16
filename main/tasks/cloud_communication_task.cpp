@@ -47,16 +47,6 @@ namespace {
     static QueueHandle_t s_command_queue = nullptr;
     static QueueHandle_t s_moisture_mqtt_queue = nullptr;
 
-    // Command type encoding: negative values for external MQTT commands
-    enum class CommandType : int32_t {
-        UPDATE_TEMP_LOW_WARN = -1,
-        UPDATE_TEMP_LOW_CRIT = -2,
-        UPDATE_TEMP_HIGH_WARN = -3,
-        UPDATE_TEMP_HIGH_CRIT = -4,
-        UPDATE_MOISTURE_LOW_WARN = -5,
-        UPDATE_MOISTURE_LOW_CRIT = -6,
-    };
-
     // Map threshold name string to command type
     static CommandType parseThresholdName(const char* name) {
         if (std::strcmp(name, "temp_low_warn") == 0) return CommandType::UPDATE_TEMP_LOW_WARN;
