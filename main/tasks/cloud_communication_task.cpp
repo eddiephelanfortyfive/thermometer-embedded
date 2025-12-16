@@ -16,7 +16,7 @@
 #include <cstring>
 #include <main/utils/time_sync.hpp>
 #include <main/state/device_state.hpp>
-#include <cJSON.h>
+#include <main/utils/third-party/mjson.h>
 
 static const char* TAG = "CLOUD_TASK";
 
@@ -62,7 +62,7 @@ namespace {
         return static_cast<CommandType>(0); // Invalid
     }
 
-    // MQTT message callback
+    // MQTT message callback - uses mjson for zero-allocation parsing
     static void onMqttMessage(const char* topic, const uint8_t* payload, int length) {
         (void)topic;
         if (s_command_queue == nullptr || length <= 0 || length > 256) {
@@ -76,39 +76,29 @@ namespace {
         std::memcpy(json_buf, payload, copy_len);
         json_buf[copy_len] = '\0';
 
-        cJSON* json = cJSON_Parse(json_buf);
-        if (json == nullptr) {
-            LOG_WARN(TAG, "MQTT RX JSON parse failed: topic=%s", topic);
-            return;
-        }
-
-        // Parse command structure: {"command": "update_threshold", "threshold": "...", "value": ...}
-        cJSON* cmd_item = cJSON_GetObjectItem(json, "command");
-        if (cmd_item == nullptr || !cJSON_IsString(cmd_item)) {
-            cJSON_Delete(json);
+        // Parse command field using mjson (zero allocation!)
+        char cmd_str[32];
+        int cmd_len = mjson_get_string(json_buf, copy_len, "$.command", cmd_str, sizeof(cmd_str));
+        if (cmd_len <= 0) {
             LOG_WARN(TAG, "MQTT RX missing/invalid 'command' field");
             return;
         }
 
-        const char* cmd_str = cJSON_GetStringValue(cmd_item);
-        
         // Handle single threshold update: {"command": "update_threshold", "threshold": "...", "value": ...}
         if (std::strcmp(cmd_str, "update_threshold") == 0) {
-            cJSON* threshold_item = cJSON_GetObjectItem(json, "threshold");
-            cJSON* value_item = cJSON_GetObjectItem(json, "value");
-            if (threshold_item == nullptr || !cJSON_IsString(threshold_item) ||
-                value_item == nullptr || !cJSON_IsNumber(value_item)) {
-                cJSON_Delete(json);
+            char threshold_name[64];
+            double threshold_value;
+            
+            int name_len = mjson_get_string(json_buf, copy_len, "$.threshold", threshold_name, sizeof(threshold_name));
+            int value_found = mjson_get_number(json_buf, copy_len, "$.value", &threshold_value);
+            
+            if (name_len <= 0 || value_found == 0) {
                 LOG_WARN(TAG, "MQTT RX missing/invalid 'threshold' or 'value' field");
                 return;
             }
 
-            const char* threshold_name = cJSON_GetStringValue(threshold_item);
-            float threshold_value = static_cast<float>(cJSON_GetNumberValue(value_item));
-
             CommandType cmd_type = parseThresholdName(threshold_name);
             if (cmd_type == static_cast<CommandType>(0)) {
-                cJSON_Delete(json);
                 LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
                 return;
             }
@@ -117,67 +107,64 @@ namespace {
             Command cmd{};
             cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
             cmd.type = static_cast<int32_t>(cmd_type);
-            cmd.value = threshold_value;
+            cmd.value = static_cast<float>(threshold_value);
 
             if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
-                LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+                LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, cmd.value);
             } else {
                 LOG_WARN(TAG, "MQTT RX queue full, dropped command");
             }
         }
-        // Handle multiple threshold updates: {"command": "update_thresholds", "temp_high_crit": 30.0, "temp_high_warn": 25.0, ...}
+        // Handle multiple threshold updates: {"command": "update_thresholds", "temp_high_crit": 30.0, ...}
         else if (std::strcmp(cmd_str, "update_thresholds") == 0) {
             int updated_count = 0;
             int failed_count = 0;
             
-            // Iterate through all JSON items (skip "command" field)
-            cJSON* item = json->child;
-            while (item != nullptr) {
-                // Skip the "command" field itself
-                if (item->string != nullptr && std::strcmp(item->string, "command") == 0) {
-                    item = item->next;
-                    continue;
-                }
+            // Check all known threshold names directly (mjson doesn't support iteration like cJSON)
+            const char* threshold_names[] = {
+                "temp_low_warn", "temp_low_crit", "temp_high_warn", "temp_high_crit",
+                "moisture_low_warn", "moisture_low_crit", "moisture_high_warn", "moisture_high_crit"
+            };
+            
+            for (size_t i = 0; i < sizeof(threshold_names) / sizeof(threshold_names[0]); i++) {
+                const char* threshold_name = threshold_names[i];
+                double threshold_value;
                 
-                // Each other field should be a threshold name with a numeric value
-                if (item->string != nullptr && cJSON_IsNumber(item)) {
-                    const char* threshold_name = item->string;
-                    float threshold_value = static_cast<float>(cJSON_GetNumberValue(item));
-                    
+                // Build JSONPath: $.threshold_name
+                char path[80];
+                std::snprintf(path, sizeof(path), "$.%s", threshold_name);
+                
+                if (mjson_get_number(json_buf, copy_len, path, &threshold_value) == 1) {
                     CommandType cmd_type = parseThresholdName(threshold_name);
                     if (cmd_type != static_cast<CommandType>(0)) {
                         Command cmd{};
                         cmd.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
                         cmd.type = static_cast<int32_t>(cmd_type);
-                        cmd.value = threshold_value;
+                        cmd.value = static_cast<float>(threshold_value);
                         
                         if (xQueueSend(s_command_queue, &cmd, 0) == pdTRUE) {
                             updated_count++;
-                            LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, threshold_value);
+                            LOG_INFO(TAG, "MQTT RX parsed: threshold=%s value=%.2f", threshold_name, cmd.value);
                         } else {
                             failed_count++;
                             LOG_WARN(TAG, "MQTT RX queue full, dropped command: %s", threshold_name);
                         }
-                    } else {
-                        failed_count++;
-                        LOG_WARN(TAG, "MQTT RX unknown threshold: %s", threshold_name);
                     }
                 }
-                
-                item = item->next;
             }
             
             if (updated_count > 0) {
                 LOG_INFO(TAG, "MQTT RX batch update: %d succeeded, %d failed", updated_count, failed_count);
+            } else if (failed_count == 0) {
+                LOG_WARN(TAG, "MQTT RX batch update: no valid thresholds found");
             }
         }
         else {
-            cJSON_Delete(json);
             LOG_WARN(TAG, "MQTT RX unknown command: %s", cmd_str);
             return;
         }
-
-        cJSON_Delete(json);
+        
+        // No cleanup needed - mjson uses zero allocation!
     }
 
     static void taskFunction(void* parameters) {
@@ -242,7 +229,7 @@ namespace {
             // Perform post-connect actions once connected
             if (s_mqtt_client.isConnected() && s_post_connect_pending) {
                 char cmd_topic[96];
-                std::snprintf(cmd_topic, sizeof(cmd_topic), "thermometer/%s/cmd", Config::Device::id);
+                std::snprintf(cmd_topic, sizeof(cmd_topic), Config::Mqtt::Topics::CMD, Config::Device::id);
                 (void)s_mqtt_client.subscribe(cmd_topic, Config::Mqtt::default_qos);
 
                 // Flush buffered data
@@ -252,7 +239,7 @@ namespace {
                     char payload[160];
                     char ts[16];
                     TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                    std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
+                    std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::TEMPERATURE, Config::Device::id);
                     std::snprintf(payload, sizeof(payload),
                                   "{\"value\":%.2f,\"ts\":\"%s\",\"buffered\":1}",
                                   buffered.temp_c, ts);
@@ -267,7 +254,7 @@ namespace {
                     char payload[192];
                     char ts[16];
                     TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                    std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                    std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::MOISTURE, Config::Device::id);
                     std::snprintf(payload, sizeof(payload),
                                   "{\"percent\":%.1f,\"ts\":\"%s\",\"buffered\":1}",
                                   static_cast<double>(mbuf.moisture_percent), ts);
@@ -286,7 +273,7 @@ namespace {
                     char payload[224];
                     char ts[16];
                     TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                    std::snprintf(topic, sizeof(topic), "thermometer/%s/alert", Config::Device::id);
+                    std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::ALERT, Config::Device::id);
                     // Build reasons array string
                     char reasons_str[64] = {0};
                     bool first_reason = true;
@@ -334,7 +321,7 @@ namespace {
                         char payload[160];
                         char ts[16];
                         TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                        std::snprintf(topic, sizeof(topic), "thermometer/%s/temperature", Config::Device::id);
+                        std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::TEMPERATURE, Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"value\":%.2f,\"ts\":\"%s\"}",
                                       s_last_temp_c, ts);
@@ -375,7 +362,7 @@ namespace {
                         char payload[160];
                         char ts[16];
                         TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                        std::snprintf(topic, sizeof(topic), "thermometer/%s/moisture", Config::Device::id);
+                        std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::MOISTURE, Config::Device::id);
                         std::snprintf(payload, sizeof(payload),
                                       "{\"percent\":%.1f,\"ts\":\"%s\"}",
                                       static_cast<double>(s_last_moisture_pct),
@@ -420,7 +407,7 @@ namespace {
                     char payload[192];
                     char ts[16];
                     TimeSync::formatFixedTimestamp(ts, sizeof(ts));
-                    std::snprintf(topic, sizeof(topic), "thermometer/%s/alert", Config::Device::id);
+                    std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::ALERT, Config::Device::id);
                     std::snprintf(payload, sizeof(payload),
                                   "{\"state\":\"%s\",\"reason\":\"%s\",\"temp\":%.2f,\"moisture\":%.1f,\"ts\":\"%s\"}",
                                   s_str, r_str, s_last_temp_c, s_last_moisture_pct, ts);
@@ -434,7 +421,7 @@ namespace {
             if ((now - last_status_time) > status_period && s_mqtt_client.isConnected()) {
                 char topic[96];
                 char payload[256];
-                std::snprintf(topic, sizeof(topic), "thermometer/%s/status", Config::Device::id);
+                std::snprintf(topic, sizeof(topic), Config::Mqtt::Topics::STATUS, Config::Device::id);
                 uint32_t uptime_ms = static_cast<uint32_t>(now * portTICK_PERIOD_MS);
                 uint32_t buffered_temp = static_cast<uint32_t>(s_telemetry_buffer.getCount());
                 uint32_t buffered_moist = static_cast<uint32_t>(s_moisture_buffer.getCount());

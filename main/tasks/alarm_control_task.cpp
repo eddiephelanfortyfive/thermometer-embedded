@@ -76,15 +76,15 @@ namespace {
             // Use a short timeout so we can schedule repeated critical beeps
             if (xQueueReceive(s_alarm_queue, &evt, pdMS_TO_TICKS(100)) == pdTRUE) {
                 // Map incoming event types to mode
-                if (evt.type == 3) {
+                if (evt.type == AlarmType::CRITICAL) {
                     s_mode = Mode::CRITICAL;
                     s_last_crit_cycle = 0; // force immediate cycle
-                } else if (evt.type == 0) {
+                } else if (evt.type == AlarmType::WARNING) {
                     s_mode = Mode::WARNING;
                     // Single short beep on warning event
                     playPattern(0);
                 } else {
-                    // Unknown/clear
+                    // Clear/unknown alarm
                     s_mode = Mode::NONE;
                 }
             }

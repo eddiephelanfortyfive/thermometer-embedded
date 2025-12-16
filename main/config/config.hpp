@@ -145,6 +145,16 @@ namespace Mqtt {
     // LWT
     static constexpr bool lwt_enable = true;
     static constexpr const char* lwt_prefix = "thermometer";
+
+    // MQTT Topic Templates (use with device ID via snprintf)
+    namespace Topics {
+        static constexpr const char* TEMPERATURE = "thermometer/%s/temperature";
+        static constexpr const char* MOISTURE = "thermometer/%s/moisture";
+        static constexpr const char* ALERT = "thermometer/%s/alert";
+        static constexpr const char* STATUS = "thermometer/%s/status";
+        static constexpr const char* CMD = "thermometer/%s/cmd";
+        static constexpr const char* THRESHOLDS_ACK = "thermometer/%s/thresholds-changed";
+    }
 }
 }
 

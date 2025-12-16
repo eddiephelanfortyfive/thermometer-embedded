@@ -46,7 +46,7 @@ bool MqttClient::connect() {
     // LWT: retained "offline" on disconnect; publish "online" on connect
     static char lwt_topic[96];
     if (Config::Mqtt::lwt_enable) {
-        snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/status", Config::Mqtt::lwt_prefix, client_id);
+        snprintf(lwt_topic, sizeof(lwt_topic), Config::Mqtt::Topics::STATUS, client_id);
         cfg.session.last_will.topic = lwt_topic;
         cfg.session.last_will.msg = "offline";
         cfg.session.last_will.qos = Config::Mqtt::default_qos;
@@ -140,7 +140,7 @@ void MqttClient::handleEvent(esp_mqtt_event_handle_t event) {
             // Publish retained "online" status
             if (Config::Mqtt::lwt_enable) {
                 char topic[96];
-                snprintf(topic, sizeof(topic), "%s/%s/status", Config::Mqtt::lwt_prefix, client_id);
+                snprintf(topic, sizeof(topic), Config::Mqtt::Topics::STATUS, client_id);
                 (void)publish(topic, "online", Config::Mqtt::default_qos, true);
             }
             LOG_INFO(TAG_MQTT, "%s", "MQTT connected");

@@ -147,13 +147,15 @@ namespace {
         AlarmEvent evt{};
         evt.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
         evt.temperature_c = 0.0f;
-        // Map: warning → type 0 (short), critical → type 3 (triple)
-        evt.type = (s == State::CRITICAL) ? 3 : (s == State::WARNING) ? 0 : 0xFF;
-        if (evt.type != 0xFF) (void)xQueueSend(q_alarm, &evt, 0);
+        // Map state to alarm type: WARNING for warning state, CRITICAL for critical state
+        evt.type = (s == State::CRITICAL) ? AlarmType::CRITICAL 
+                 : (s == State::WARNING) ? AlarmType::WARNING 
+                 : AlarmType::CLEAR;
+        if (evt.type != AlarmType::CLEAR) (void)xQueueSend(q_alarm, &evt, 0);
     }
 
     // Send raw alarm event type to alarm task
-    static void sendAlarmType(uint8_t type) {
+    static void sendAlarmType(AlarmType type) {
         if (!q_alarm) return;
         AlarmEvent evt{};
         evt.timestamp_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -248,12 +250,12 @@ namespace {
                 static State prev = State::OK;
                 if (prev == State::CRITICAL && current != State::CRITICAL) {
                     // Clear critical beeping loop
-                    sendAlarmType(255); // CLEAR
+                    sendAlarmType(AlarmType::CLEAR);
                 }
                 if (current == State::CRITICAL) {
-                    sendAlarmType(3);
+                    sendAlarmType(AlarmType::CRITICAL);
                 } else if (current == State::WARNING && prev != State::CRITICAL) {
-                    sendAlarmType(0);
+                    sendAlarmType(AlarmType::WARNING);
                 }
                 prev = current;
 

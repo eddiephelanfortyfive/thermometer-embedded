@@ -46,6 +46,8 @@ namespace {
                     continue;
                 } else {
                     LOG_INFO(TAG, "%s", "ADC init successful");
+                    // Reset timing baseline to maintain absolute periodicity after recovery
+                    last_wake = xTaskGetTickCount();
                 }
             }
 

@@ -1,5 +1,6 @@
 idf_component_register(SRCS "main.cpp"
                                "utils/logger.cpp"
+                               "utils/third-party/mjson.c"
                                "network/wifi_manager.cpp"
                                "network/mqtt_client.cpp"
                                "tasks/cloud_communication_task.cpp"
@@ -27,4 +28,4 @@ idf_component_register(SRCS "main.cpp"
                                   "tasks"
                                   "config"
                                   "state"
-                      REQUIRES driver esp_wifi esp_event nvs_flash esp_netif esp_driver_gpio esp_adc esp_driver_i2c esp_driver_ledc cjson)
+                      REQUIRES driver esp_wifi esp_event nvs_flash esp_netif esp_driver_gpio esp_adc esp_driver_i2c esp_driver_ledc)

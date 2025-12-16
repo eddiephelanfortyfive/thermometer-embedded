@@ -8,6 +8,7 @@
 #include <main/state/runtime_thresholds.hpp>
 #include <main/models/cloud_publish_request.hpp>
 #include <main/utils/time_sync.hpp>
+#include <main/utils/third-party/mjson.h>
 #include <inttypes.h>
 #include <cstring>
 #include <cstdio>
@@ -243,38 +244,39 @@ namespace {
 
         CloudPublishRequest req{};
         std::snprintf(req.topic, sizeof(req.topic),
-                      "thermometer/%s/thresholds-changed", Config::Device::id);
+                      Config::Mqtt::Topics::THRESHOLDS_ACK, Config::Device::id);
 
         char ts[16];
         TimeSync::formatFixedTimestamp(ts, sizeof(ts));
 
-        char* out = req.payload;
-        size_t cap = sizeof(req.payload);
-        int written = std::snprintf(out, cap, "{\"changes\":{");
-        size_t off = (written > 0) ? static_cast<size_t>(written) : 0;
+        // Build changes object content (static buffer, zero allocation)
+        char changes_json[256];
+        int off = 0;
         bool first = true;
-        auto append_kv = [&](const char* key, float value, const char* fmt) {
-            if (!first) {
-                written = std::snprintf(out + off, cap - off, ",");
-                off += (written > 0) ? static_cast<size_t>(written) : 0;
+        
+        auto append_field = [&](const char* name, float value, const char* fmt) {
+            if (off < static_cast<int>(sizeof(changes_json))) {
+                off += std::snprintf(changes_json + off, sizeof(changes_json) - off,
+                                    "%s\"%s\":", first ? "" : ",", name);
+                off += std::snprintf(changes_json + off, sizeof(changes_json) - off,
+                                    fmt, static_cast<double>(value));
+                first = false;
             }
-            written = std::snprintf(out + off, cap - off, "\"%s\":", key);
-            off += (written > 0) ? static_cast<size_t>(written) : 0;
-            written = std::snprintf(out + off, cap - off, fmt, static_cast<double>(value));
-            off += (written > 0) ? static_cast<size_t>(written) : 0;
-            first = false;
         };
-        if (changes.temp_low_warn)  append_kv("temp_low_warn",  changes.v_temp_low_warn,  "%.2f");
-        if (changes.temp_low_crit)  append_kv("temp_low_crit",  changes.v_temp_low_crit,  "%.2f");
-        if (changes.temp_high_warn) append_kv("temp_high_warn", changes.v_temp_high_warn, "%.2f");
-        if (changes.temp_high_crit) append_kv("temp_high_crit", changes.v_temp_high_crit, "%.2f");
-        if (changes.moisture_low_warn) append_kv("moisture_low_warn", changes.v_moisture_low_warn, "%.1f");
-        if (changes.moisture_low_crit) append_kv("moisture_low_crit", changes.v_moisture_low_crit, "%.1f");
-        if (changes.moisture_high_warn) append_kv("moisture_high_warn", changes.v_moisture_high_warn, "%.1f");
-        if (changes.moisture_high_crit) append_kv("moisture_high_crit", changes.v_moisture_high_crit, "%.1f");
+        
+        if (changes.temp_low_warn)  append_field("temp_low_warn",  changes.v_temp_low_warn,  "%.2f");
+        if (changes.temp_low_crit)  append_field("temp_low_crit",  changes.v_temp_low_crit,  "%.2f");
+        if (changes.temp_high_warn) append_field("temp_high_warn", changes.v_temp_high_warn, "%.2f");
+        if (changes.temp_high_crit) append_field("temp_high_crit", changes.v_temp_high_crit, "%.2f");
+        if (changes.moisture_low_warn)  append_field("moisture_low_warn",  changes.v_moisture_low_warn,  "%.1f");
+        if (changes.moisture_low_crit)  append_field("moisture_low_crit",  changes.v_moisture_low_crit,  "%.1f");
+        if (changes.moisture_high_warn) append_field("moisture_high_warn", changes.v_moisture_high_warn, "%.1f");
+        if (changes.moisture_high_crit) append_field("moisture_high_crit", changes.v_moisture_high_crit, "%.1f");
 
-        written = std::snprintf(out + off, cap - off, "},\"ts\":\"%s\",\"status\":\"ok\"}", ts);
-        (void)written;
+        // Assemble final JSON using mjson_snprintf (zero allocation)
+        mjson_snprintf(req.payload, sizeof(req.payload),
+                       "{\"changes\":{%s},\"ts\":\"%s\",\"status\":\"ok\"}",
+                       changes_json, ts);
 
         if (xQueueSend(s_thresholds_changed_queue, &req, 0) != pdTRUE) {
             LOG_WARN(TAG, "%s", "thresholds_changed_queue full, dropped thresholds-changed ACK");
