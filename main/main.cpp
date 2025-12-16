@@ -14,6 +14,7 @@
 #include <main/models/command.hpp>
 #include <main/models/moisture_data.hpp>
 #include <main/state/runtime_thresholds.hpp>
+#include <main/utils/watchdog.hpp>
 #include <nvs_flash.h>
 #include <freertos/queue.h>
 #include <cstring>
@@ -35,6 +36,9 @@ extern "C" void app_main(void)
 
     // Initialize runtime thresholds (load from NVS or use defaults)
     RuntimeThresholds::init();
+
+    // Initialize Task Watchdog Timer for safety-critical tasks
+    Watchdog::init();
 
     // Create static queues
     static uint8_t temperature_data_queue_storage[32 * sizeof(TemperatureData)];
