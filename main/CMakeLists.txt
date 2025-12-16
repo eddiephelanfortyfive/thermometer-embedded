@@ -27,4 +27,4 @@ idf_component_register(SRCS "main.cpp"
                                   "tasks"
                                   "config"
                                   "state"
-                      REQUIRES driver esp_wifi esp_event nvs_flash esp_netif esp_driver_gpio esp_adc esp_driver_i2c esp_driver_ledc json)
+                      REQUIRES driver esp_wifi esp_event nvs_flash esp_netif esp_driver_gpio esp_adc esp_driver_i2c esp_driver_ledc cjson)
