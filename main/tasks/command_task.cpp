@@ -12,16 +12,6 @@
 static const char* TAG = "CMD_TASK";
 
 namespace {
-    // Command type encoding: negative values for external MQTT commands
-    enum class CommandType : int32_t {
-        UPDATE_TEMP_LOW_WARN = -1,
-        UPDATE_TEMP_LOW_CRIT = -2,
-        UPDATE_TEMP_HIGH_WARN = -3,
-        UPDATE_TEMP_HIGH_CRIT = -4,
-        UPDATE_MOISTURE_LOW_WARN = -5,
-        UPDATE_MOISTURE_LOW_CRIT = -6,
-    };
-
     static StaticTask_t s_task_tcb;
     static StackType_t s_task_stack[4096 / sizeof(StackType_t)];
 
