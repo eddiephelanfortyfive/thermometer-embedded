@@ -618,7 +618,6 @@ All system parameters can be customized in `main/config/config.hpp`:
 ### Network Settings
 ```cpp
 Config::Wifi::max_retry_count = 5;
-Config::Wifi::reconnect_backoff_ms = 1000;
 Config::Mqtt::keepalive_seconds = 60;
 Config::Mqtt::default_qos = 1;
 ```
