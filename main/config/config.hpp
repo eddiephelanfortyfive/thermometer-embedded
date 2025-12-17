@@ -17,7 +17,6 @@ namespace Wifi {
     // Behavior
     static constexpr bool auto_connect_on_start = true;
     static constexpr int max_retry_count = 5;           // Number of reconnect attempts before giving up (will still retry on next trigger)
-    static constexpr uint32_t reconnect_backoff_ms = 1000; // Backoff between retries (basic)
 }
 
 namespace Device {
