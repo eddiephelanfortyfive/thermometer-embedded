@@ -14,14 +14,6 @@ MqttClient::MqttClient()
       connected(false),
       on_message(nullptr) {}
 
-MqttClient::MqttClient(const char* host, int port, const char* client_id)
-    : client(nullptr),
-      host(host),
-      port(port),
-      client_id(client_id),
-      connected(false),
-      on_message(nullptr) {}
-
 bool MqttClient::init() {
     // Nothing heavy to do here; actual client is created on connect()
     return true;
