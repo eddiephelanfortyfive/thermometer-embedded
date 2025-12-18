@@ -83,7 +83,7 @@ namespace {
             LOG_WARN(TAG, "MQTT RX missing/invalid 'command' field");
             return;
         }
-
+        
         // Handle single threshold update: {"command": "update_threshold", "threshold": "...", "value": ...}
         if (std::strcmp(cmd_str, "update_threshold") == 0) {
             char threshold_name[64];
@@ -163,7 +163,7 @@ namespace {
             LOG_WARN(TAG, "MQTT RX unknown command: %s", cmd_str);
             return;
         }
-        
+
         // No cleanup needed - mjson uses zero allocation!
     }
 

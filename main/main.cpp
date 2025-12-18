@@ -89,6 +89,7 @@ extern "C" void app_main(void)
     }
     // Create command task to handle incoming MQTT commands
     CommandTask::create(command_queue, thresholds_changed_queue);
+    
     if (Config::Features::enable_temperature_task) {
         TemperatureSensorTask::create(temperature_data_queue);
     }
