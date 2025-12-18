@@ -106,10 +106,10 @@ extern "C" void app_main(void)
        
     }
 
-    TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t loop_period = pdMS_TO_TICKS(1000);
+    // Main task has nothing to do after initialization - block forever
+    // This yields CPU to all other tasks and keeps the task alive
     for (;;) {
-        vTaskDelayUntil(&last_wake_time, loop_period);
+        vTaskDelay(portMAX_DELAY);
     }
 }
 
